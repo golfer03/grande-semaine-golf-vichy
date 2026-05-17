@@ -1,0 +1,952 @@
+
+
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Calendar, Clock, Trophy, User, Plus, Save, Pencil, Trash2, ChevronRight } from "lucide-react";
+
+// --- Utilitaires ---
+const LS_KEY = "golf_compet_v1";
+const pad2 = (n) => String(n).padStart(2, "0");
+
+function isoDateLocal(d = new Date()) {
+  const yyyy = d.getFullYear();
+  const mm = pad2(d.getMonth() + 1);
+  const dd = pad2(d.getDate());
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function parseLocalDateTime(dateStr, timeStr) {
+  // dateStr: YYYY-MM-DD, timeStr: HH:mm
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const [hh, mm] = timeStr.split(":").map(Number);
+  return new Date(y, m - 1, d, hh, mm, 0, 0);
+}
+
+function formatTime(date) {
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+function formatDateFR(dateStr) {
+  // YYYY-MM-DD -> dd/mm/yyyy
+  const [y, m, d] = dateStr.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function formatCountdown(ms) {
+  const sign = ms < 0 ? "-" : "";
+  ms = Math.abs(ms);
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${sign}${h}h ${m}m ${s}s`;
+  if (m > 0) return `${sign}${m}m ${s}s`;
+  return `${sign}${s}s`;
+}
+
+function safeLoad() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function safeSave(state) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+  } catch {
+    // ignore
+  }
+}
+
+// --- Données par défaut (modifiable dans l'onglet "Organisation") ---
+// Compétition : 6 jours du lundi 03/08/2026 au samedi 08/08/2026
+const defaultState = (() => {
+  const teeTimesTemplate = [
+    { id: "tt1", time: "09:00", playerIds: [] },
+    { id: "tt2", time: "09:10", playerIds: [] },
+    { id: "tt3", time: "09:20", playerIds: [] },
+  ];
+  return {
+    competition: {
+      title: "Compétition de Golf — Multi-jours",
+      subtitle: "Saisie des scores, départs et classement quotidien",
+      club: "",
+      format: "Stroke play (brut & net)",
+      timezoneHint: "Heure locale de l'appareil (Europe/Paris si iPhone en France)",
+    },
+    players: [],
+    activePlayerId: null,
+    days: [
+      {
+        id: "day1",
+        label: "Jour 1",
+        date: "2026-08-03",
+        notes: "Lundi 3 août 2026 — Coupe Ynovit Groupe • Jeu simple • Stableford • Accueil 08:00 — Briefing 08:30",
+        teeTimes: teeTimesTemplate.map((t) => ({ ...t })),
+      },
+      {
+        id: "day2",
+        label: "Jour 2",
+        date: "2026-08-04",
+        notes: "Mardi 4 août 2026 — Coupe la Montagne • Scramble à 2",
+        teeTimes: teeTimesTemplate.map((t) => ({ ...t })),
+      },
+      {
+        id: "day3",
+        label: "Mercredi",
+        date: "2026-08-05",
+        notes: "",
+        teeTimes: teeTimesTemplate.map((t) => ({ ...t })),
+      },
+      {
+        id: "day4",
+        label: "Jeudi",
+        date: "2026-08-06",
+        notes: "",
+        teeTimes: teeTimesTemplate.map((t) => ({ ...t })),
+      },
+      {
+        id: "day5",
+        label: "Vendredi",
+        date: "2026-08-07",
+        notes: "",
+        teeTimes: teeTimesTemplate.map((t) => ({ ...t })),
+      },
+      {
+        id: "day6",
+        label: "Samedi",
+        date: "2026-08-08",
+        notes: "Remise des prix 18:00",
+        teeTimes: teeTimesTemplate.map((t) => ({ ...t })),
+      },
+    ],
+    scores: {
+      // dayId: { playerId: { gross: number, net: number, ts: ISO } }
+    },
+    settings: {
+      showGrossInRanking: true,
+      tieBreak: "gross", // gross | latest
+    },
+  };
+})();
+
+// --- Composant principal ---
+export default function GolfCompetitionMiniSite() {
+  const [state, setState] = useState(() => safeLoad() ?? defaultState);
+  const [tab, setTab] = useState("accueil");
+  const [now, setNow] = useState(() => new Date());
+  const tickRef = useRef(null);
+
+  useEffect(() => {
+    safeSave(state);
+  }, [state]);
+
+  useEffect(() => {
+    tickRef.current = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(tickRef.current);
+  }, []);
+
+  const activePlayer = useMemo(() => state.players.find((p) => p.id === state.activePlayerId) ?? null, [state.players, state.activePlayerId]);
+
+  const todayDay = useMemo(() => {
+    const todayIso = isoDateLocal(now);
+    return state.days.find((d) => d.date === todayIso) ?? state.days[0];
+  }, [state.days, now]);
+
+  const nextDepartForActive = useMemo(() => {
+    if (!activePlayer) return null;
+    const occurrences = [];
+    for (const day of state.days) {
+      for (const tt of day.teeTimes) {
+        if (tt.playerIds.includes(activePlayer.id)) {
+          const dt = parseLocalDateTime(day.date, tt.time);
+          occurrences.push({ day, tt, dt });
+        }
+      }
+    }
+    occurrences.sort((a, b) => a.dt - b.dt);
+    const upcoming = occurrences.find((o) => o.dt.getTime() >= now.getTime() - 60 * 1000); // tolérance 1 minute
+    return upcoming ?? occurrences[occurrences.length - 1] ?? null;
+  }, [activePlayer, state.days, now]);
+
+  // --- Actions état ---
+  const upsertPlayer = (player) => {
+    setState((s) => {
+      const exists = s.players.some((p) => p.id === player.id);
+      const players = exists ? s.players.map((p) => (p.id === player.id ? player : p)) : [...s.players, player];
+      return { ...s, players, activePlayerId: s.activePlayerId ?? player.id };
+    });
+  };
+
+  const removePlayer = (playerId) => {
+    setState((s) => {
+      const players = s.players.filter((p) => p.id !== playerId);
+      const days = s.days.map((d) => ({
+        ...d,
+        teeTimes: d.teeTimes.map((tt) => ({ ...tt, playerIds: tt.playerIds.filter((id) => id !== playerId) })),
+      }));
+      const scores = { ...s.scores };
+      for (const dayId of Object.keys(scores)) {
+        if (scores[dayId]?.[playerId]) {
+          const copy = { ...scores[dayId] };
+          delete copy[playerId];
+          scores[dayId] = copy;
+        }
+      }
+      const activePlayerId = s.activePlayerId === playerId ? (players[0]?.id ?? null) : s.activePlayerId;
+      return { ...s, players, days, scores, activePlayerId };
+    });
+  };
+
+  const setActive = (playerId) => setState((s) => ({ ...s, activePlayerId: playerId }));
+
+  const saveScore = ({ dayId, playerId, gross, net }) => {
+    const g = gross === "" ? "" : Number(gross);
+    const n = net === "" ? "" : Number(net);
+    if (g === "" || n === "") return;
+    if (!Number.isFinite(g) || !Number.isFinite(n)) return;
+    setState((s) => {
+      const dayScores = s.scores[dayId] ?? {};
+      return {
+        ...s,
+        scores: {
+          ...s.scores,
+          [dayId]: {
+            ...dayScores,
+            [playerId]: { gross: g, net: n, ts: new Date().toISOString() },
+          },
+        },
+      };
+    });
+  };
+
+  const togglePlayerInTeeTime = ({ dayId, teeTimeId, playerId }) => {
+    setState((s) => {
+      const days = s.days.map((d) => {
+        if (d.id !== dayId) return d;
+        return {
+          ...d,
+          teeTimes: d.teeTimes.map((tt) => {
+            if (tt.id !== teeTimeId) return tt;
+            const has = tt.playerIds.includes(playerId);
+            const playerIds = has ? tt.playerIds.filter((id) => id !== playerId) : [...tt.playerIds, playerId];
+            return { ...tt, playerIds };
+          }),
+        };
+      });
+      return { ...s, days };
+    });
+  };
+
+  const updateCompetition = (patch) => setState((s) => ({ ...s, competition: { ...s.competition, ...patch } }));
+  const updateDay = (dayId, patch) => setState((s) => ({ ...s, days: s.days.map((d) => (d.id === dayId ? { ...d, ...patch } : d)) }));
+  const updateSettings = (patch) => setState((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
+
+  const resetAll = () => {
+    localStorage.removeItem(LS_KEY);
+    setState(defaultState);
+    setTab("accueil");
+  };
+
+  // --- Classements ---
+  const rankingForDay = (dayId) => {
+    const dayScores = state.scores[dayId] ?? {};
+    const rows = state.players
+      .map((p) => {
+        const sc = dayScores[p.id];
+        return {
+          player: p,
+          gross: sc?.gross ?? null,
+          net: sc?.net ?? null,
+          ts: sc?.ts ?? null,
+          hasScore: !!sc,
+        };
+      })
+      .filter((r) => r.hasScore);
+
+    rows.sort((a, b) => {
+      // 1) net croissant
+      if (a.net !== b.net) return a.net - b.net;
+      // 2) tie-break
+      if (state.settings.tieBreak === "gross") {
+        if (a.gross !== b.gross) return a.gross - b.gross;
+      } else if (state.settings.tieBreak === "latest") {
+        // le plus ancien en premier (évite de récompenser la saisie tardive)
+        if (a.ts && b.ts) return new Date(a.ts) - new Date(b.ts);
+      }
+      // 3) nom
+      const an = `${a.player.lastName} ${a.player.firstName}`.toLowerCase();
+      const bn = `${b.player.lastName} ${b.player.firstName}`.toLowerCase();
+      return an.localeCompare(bn);
+    });
+
+    // Attribution des places avec ex aequo
+    let place = 0;
+    let lastKey = null;
+    return rows.map((r, idx) => {
+      const key = `${r.net}|${state.settings.tieBreak === "gross" ? r.gross : "_"}`;
+      if (key !== lastKey) place = idx + 1;
+      lastKey = key;
+      return { ...r, place };
+    });
+  };
+
+  // --- UI helpers ---
+  const Shell = ({ children }) => (
+    <div className="min-h-screen bg-gradient-to-b from-white to-slate-50 text-slate-900">
+      <div className="mx-auto max-w-md px-4 pb-10 pt-6">
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+          {children}
+        </motion.div>
+      </div>
+    </div>
+  );
+
+  const Header = () => (
+    <div className="mb-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold leading-tight">{state.competition.title}</h1>
+          <p className="mt-1 text-sm text-slate-600">{state.competition.subtitle}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {state.competition.club ? <Badge variant="secondary">{state.competition.club}</Badge> : null}
+            <Badge variant="secondary">{state.competition.format}</Badge>
+          </div>
+        </div>
+        <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 px-3 py-2 text-right">
+          <div className="text-xs text-slate-500 flex items-center justify-end gap-1">
+            <Clock className="h-3.5 w-3.5" />
+            <span>Maintenant</span>
+          </div>
+          <div className="text-lg font-semibold tabular-nums">{formatTime(now)}</div>
+          <div className="text-[11px] text-slate-500">{formatDateFR(isoDateLocal(now))}</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // --- Sous-composants ---
+  const PlayerPicker = () => {
+    if (state.players.length === 0) {
+      return (
+        <Card className="rounded-2xl shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base">Créez votre profil joueur</CardTitle>
+            <CardDescription>Nom + prénom, puis sélectionnez votre profil.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PlayerForm mode="create" />
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <Card className="rounded-2xl shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">Joueur actif</CardTitle>
+          <CardDescription>Le joueur actif sert pour le compte à rebours et la saisie rapide.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Select value={state.activePlayerId ?? ""} onValueChange={(v) => setActive(v)}>
+            <SelectTrigger className="rounded-xl">
+              <SelectValue placeholder="Choisir un joueur" />
+            </SelectTrigger>
+            <SelectContent>
+              {state.players.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.firstName} {p.lastName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="secondary" className="rounded-xl" onClick={() => setTab("joueurs")}>Gérer joueurs</Button>
+            <Button className="rounded-xl" onClick={() => setTab("scores")}>
+              Saisir score <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const PlayerForm = ({ mode, initial, onDone }) => {
+    const [firstName, setFirstName] = useState(initial?.firstName ?? "");
+    const [lastName, setLastName] = useState(initial?.lastName ?? "");
+
+    const canSave = firstName.trim().length >= 1 && lastName.trim().length >= 1;
+
+    const handleSave = () => {
+      if (!canSave) return;
+      const id = initial?.id ?? `p_${Math.random().toString(16).slice(2)}_${Date.now()}`;
+      upsertPlayer({ id, firstName: firstName.trim(), lastName: lastName.trim() });
+      onDone?.();
+      if (mode === "create") {
+        setFirstName("");
+        setLastName("");
+      }
+    };
+
+    return (
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label htmlFor="fn" className="text-xs">Prénom</Label>
+            <Input id="fn" value={firstName} onChange={(e) => setFirstName(e.target.value)} className="rounded-xl" placeholder="Ex. Louis" />
+          </div>
+          <div>
+            <Label htmlFor="ln" className="text-xs">Nom</Label>
+            <Input id="ln" value={lastName} onChange={(e) => setLastName(e.target.value)} className="rounded-xl" placeholder="Ex. JIRSA" />
+          </div>
+        </div>
+        <Button onClick={handleSave} disabled={!canSave} className="w-full rounded-xl">
+          <Save className="mr-2 h-4 w-4" />
+          {mode === "edit" ? "Enregistrer" : "Créer mon profil"}
+        </Button>
+      </div>
+    );
+  };
+
+  const DepartClockCard = () => {
+    return (
+      <Card className="rounded-2xl shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Clock className="h-4 w-4" /> Horloge des départs
+          </CardTitle>
+          <CardDescription>Compte à rebours vers le prochain départ du joueur actif.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!activePlayer ? (
+            <div className="text-sm text-slate-600">Sélectionnez un joueur actif pour afficher son prochain départ.</div>
+          ) : !nextDepartForActive ? (
+            <div className="text-sm text-slate-600">Aucun départ assigné à {activePlayer.firstName} {activePlayer.lastName}. Ajoutez-le dans l'onglet Organisation.</div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between rounded-2xl bg-slate-50 ring-1 ring-slate-200 px-4 py-3">
+                <div>
+                  <div className="text-xs text-slate-500">Prochain départ</div>
+                  <div className="text-base font-semibold">{nextDepartForActive.day.label} — {formatDateFR(nextDepartForActive.day.date)}</div>
+                  <div className="text-sm text-slate-600">Tee time: <span className="font-semibold tabular-nums">{nextDepartForActive.tt.time}</span></div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-slate-500">Compte à rebours</div>
+                  <div className="text-lg font-semibold tabular-nums">
+                    {formatCountdown(nextDepartForActive.dt.getTime() - now.getTime())}
+                  </div>
+                </div>
+              </div>
+              <div className="text-[11px] text-slate-500">
+                Astuce : si l'heure est négative, le départ est passé. Vérifiez les assignations dans « Organisation ».
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const ScheduleToday = () => {
+    const day = todayDay;
+    return (
+      <Card className="rounded-2xl shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Calendar className="h-4 w-4" /> Départs du jour
+          </CardTitle>
+          <CardDescription>
+            {day.label} — {formatDateFR(day.date)} {day.notes ? `• ${day.notes}` : ""}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {day.teeTimes.map((tt) => {
+            const dt = parseLocalDateTime(day.date, tt.time);
+            const delta = dt.getTime() - now.getTime();
+            const isSoon = Math.abs(delta) <= 15 * 60 * 1000;
+            const assigned = tt.playerIds.map((id) => state.players.find((p) => p.id === id)).filter(Boolean);
+            return (
+              <div key={tt.id} className={`rounded-2xl px-4 py-3 ring-1 ${isSoon ? "bg-emerald-50 ring-emerald-200" : "bg-white ring-slate-200"}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs text-slate-500">Tee time</div>
+                    <div className="text-lg font-semibold tabular-nums">{tt.time}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-slate-500">Dans</div>
+                    <div className={`text-sm font-semibold tabular-nums ${delta < 0 ? "text-slate-500" : ""}`}>{formatCountdown(delta)}</div>
+                  </div>
+                </div>
+                <Separator className="my-2" />
+                <div className="text-sm">
+                  <div className="text-xs text-slate-500 mb-1">Joueurs</div>
+                  {assigned.length === 0 ? (
+                    <div className="text-slate-600">Non assigné</div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {assigned.map((p) => (
+                        <Badge key={p.id} variant={p.id === state.activePlayerId ? "default" : "secondary"}>
+                          {p.firstName} {p.lastName}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="secondary" className="rounded-xl" onClick={() => setTab("organisation")}>Organisation</Button>
+            <Button className="rounded-xl" onClick={() => setTab("classements")}>
+              Classement du jour <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const ScoresQuickEntry = () => {
+    const [dayId, setDayId] = useState(state.days[0]?.id ?? "");
+    const [gross, setGross] = useState("");
+    const [net, setNet] = useState("");
+
+    useEffect(() => {
+      // Préselection du jour en cours si possible
+      setDayId(todayDay?.id ?? state.days[0]?.id ?? "");
+    }, [todayDay?.id]);
+
+    const day = state.days.find((d) => d.id === dayId);
+    const currentScore = activePlayer && dayId ? (state.scores[dayId]?.[activePlayer.id] ?? null) : null;
+
+    useEffect(() => {
+      if (currentScore) {
+        setGross(String(currentScore.gross));
+        setNet(String(currentScore.net));
+      } else {
+        setGross("");
+        setNet("");
+      }
+    }, [dayId, state.activePlayerId]);
+
+    return (
+      <Card className="rounded-2xl shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Trophy className="h-4 w-4" /> Saisie du score (jour)
+          </CardTitle>
+          <CardDescription>Saisissez le score brut et net du joueur actif pour une journée.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!activePlayer ? (
+            <div className="text-sm text-slate-600">Choisissez d'abord un joueur actif.</div>
+          ) : (
+            <>
+              <div className="rounded-2xl bg-slate-50 ring-1 ring-slate-200 px-4 py-3">
+                <div className="text-xs text-slate-500">Joueur</div>
+                <div className="text-base font-semibold">{activePlayer.firstName} {activePlayer.lastName}</div>
+              </div>
+
+              <div>
+                <Label className="text-xs">Journée</Label>
+                <Select value={dayId} onValueChange={setDayId}>
+                  <SelectTrigger className="rounded-xl"><SelectValue placeholder="Choisir un jour" /></SelectTrigger>
+                  <SelectContent>
+                    {state.days.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>{d.label} — {formatDateFR(d.date)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">Brut</Label>
+                  <Input inputMode="numeric" value={gross} onChange={(e) => setGross(e.target.value)} className="rounded-xl" placeholder="ex. 88" />
+                </div>
+                <div>
+                  <Label className="text-xs">Net</Label>
+                  <Input inputMode="numeric" value={net} onChange={(e) => setNet(e.target.value)} className="rounded-xl" placeholder="ex. 72" />
+                </div>
+              </div>
+
+              <Button className="w-full rounded-xl" onClick={() => saveScore({ dayId, playerId: activePlayer.id, gross, net })}>
+                <Save className="mr-2 h-4 w-4" /> Enregistrer le score
+              </Button>
+
+              {day && currentScore ? (
+                <div className="text-xs text-slate-500">
+                  Dernière saisie: {new Date(currentScore.ts).toLocaleString()}
+                </div>
+              ) : null}
+            </>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const DailyRankingCard = ({ day }) => {
+    const rows = rankingForDay(day.id);
+    const totalPlayers = state.players.length;
+    return (
+      <Card className="rounded-2xl shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">{day.label} — {formatDateFR(day.date)}</CardTitle>
+          <CardDescription>{rows.length}/{totalPlayers} scores saisis</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {rows.length === 0 ? (
+            <div className="text-sm text-slate-600">Aucun score saisi pour cette journée.</div>
+          ) : (
+            <div className="space-y-2">
+              {rows.map((r) => (
+                <div key={r.player.id} className={`flex items-center justify-between rounded-2xl px-4 py-3 ring-1 ${r.player.id === state.activePlayerId ? "bg-slate-50 ring-slate-300" : "bg-white ring-slate-200"}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-semibold tabular-nums">{r.place}</div>
+                    <div>
+                      <div className="text-sm font-semibold">{r.player.firstName} {r.player.lastName}</div>
+                      <div className="text-xs text-slate-500">Net: <span className="font-semibold tabular-nums">{r.net}</span>{state.settings.showGrossInRanking ? <> • Brut: <span className="font-semibold tabular-nums">{r.gross}</span></> : null}</div>
+                    </div>
+                  </div>
+                  <Button variant="secondary" className="rounded-xl" onClick={() => { setActive(r.player.id); setTab("scores"); }}>
+                    Modifier
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const PlayersManager = () => {
+    const [editing, setEditing] = useState(null);
+
+    return (
+      <div className="space-y-4">
+        <Card className="rounded-2xl shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2"><User className="h-4 w-4" /> Joueurs</CardTitle>
+            <CardDescription>Créez, modifiez, supprimez et choisissez le joueur actif.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="rounded-2xl bg-slate-50 ring-1 ring-slate-200 p-3">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold">Ajouter un joueur</div>
+                <Badge variant="secondary">Local</Badge>
+              </div>
+              <div className="mt-2">
+                <PlayerForm mode="create" />
+              </div>
+            </div>
+
+            {state.players.length === 0 ? (
+              <div className="text-sm text-slate-600">Aucun joueur.</div>
+            ) : (
+              <div className="space-y-2">
+                {state.players.map((p) => (
+                  <div key={p.id} className={`rounded-2xl px-4 py-3 ring-1 ${p.id === state.activePlayerId ? "bg-slate-50 ring-slate-300" : "bg-white ring-slate-200"}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-semibold">{p.firstName} {p.lastName}</div>
+                        {p.id === state.activePlayerId ? <div className="text-xs text-slate-500">Joueur actif</div> : null}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="secondary" className="rounded-xl" onClick={() => setActive(p.id)}>Activer</Button>
+                        <Button variant="secondary" className="rounded-xl" onClick={() => setEditing(p)}><Pencil className="h-4 w-4" /></Button>
+                        <Button variant="destructive" className="rounded-xl" onClick={() => removePlayer(p.id)}><Trash2 className="h-4 w-4" /></Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <AnimatePresence>
+          {editing ? (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}>
+              <Card className="rounded-2xl shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-base">Modifier</CardTitle>
+                  <CardDescription>{editing.firstName} {editing.lastName}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <PlayerForm mode="edit" initial={editing} onDone={() => setEditing(null)} />
+                  <Button variant="secondary" className="mt-2 w-full rounded-xl" onClick={() => setEditing(null)}>Fermer</Button>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
+    );
+  };
+
+  const Organization = () => {
+    const [selectedDayId, setSelectedDayId] = useState(state.days[0]?.id ?? "");
+    const day = state.days.find((d) => d.id === selectedDayId) ?? state.days[0];
+
+    return (
+      <div className="space-y-4">
+        <Card className="rounded-2xl shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base">Organisation</CardTitle>
+            <CardDescription>Configurer la compétition, les jours et assigner les joueurs aux départs.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">Infos compétition</div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">Titre</Label>
+                  <Input className="rounded-xl" value={state.competition.title} onChange={(e) => updateCompetition({ title: e.target.value })} />
+                </div>
+                <div>
+                  <Label className="text-xs">Club</Label>
+                  <Input className="rounded-xl" value={state.competition.club} onChange={(e) => updateCompetition({ club: e.target.value })} placeholder="ex. Golf de ..." />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Sous-titre</Label>
+                <Input className="rounded-xl" value={state.competition.subtitle} onChange={(e) => updateCompetition({ subtitle: e.target.value })} />
+              </div>
+              <div>
+                <Label className="text-xs">Format</Label>
+                <Input className="rounded-xl" value={state.competition.format} onChange={(e) => updateCompetition({ format: e.target.value })} />
+              </div>
+              <div className="text-[11px] text-slate-500">{state.competition.timezoneHint}</div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">Journées</div>
+              <Select value={selectedDayId} onValueChange={setSelectedDayId}>
+                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {state.days.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>{d.label} — {formatDateFR(d.date)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {day ? (
+                <div className="rounded-2xl bg-slate-50 ring-1 ring-slate-200 p-3 space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">Libellé</Label>
+                      <Input className="rounded-xl" value={day.label} onChange={(e) => updateDay(day.id, { label: e.target.value })} />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Date (YYYY-MM-DD)</Label>
+                      <Input className="rounded-xl" value={day.date} onChange={(e) => updateDay(day.id, { date: e.target.value })} />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Notes</Label>
+                    <Input className="rounded-xl" value={day.notes} onChange={(e) => updateDay(day.id, { notes: e.target.value })} placeholder="ex. Briefing 08:30" />
+                  </div>
+
+                  <div className="text-sm font-semibold">Départs & assignations</div>
+                  <div className="space-y-3">
+                    {day.teeTimes.map((tt) => (
+                      <div key={tt.id} className="rounded-2xl bg-white ring-1 ring-slate-200 p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-xs text-slate-500">Tee time</div>
+                            <div className="text-base font-semibold tabular-nums">{tt.time}</div>
+                          </div>
+                          <div className="w-32">
+                            <Label className="text-xs">Heure</Label>
+                            <Input className="rounded-xl" value={tt.time} onChange={(e) => {
+                              const v = e.target.value;
+                              setState((s) => ({
+                                ...s,
+                                days: s.days.map((dd) => dd.id !== day.id ? dd : {
+                                  ...dd,
+                                  teeTimes: dd.teeTimes.map((t) => t.id !== tt.id ? t : { ...t, time: v })
+                                })
+                              }));
+                            }} placeholder="HH:mm" />
+                          </div>
+                        </div>
+                        <Separator className="my-2" />
+                        <div className="text-xs text-slate-500 mb-2">Associer des joueurs à ce départ</div>
+                        {state.players.length === 0 ? (
+                          <div className="text-sm text-slate-600">Créez des joueurs dans l'onglet Joueurs.</div>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {state.players.map((p) => {
+                              const on = tt.playerIds.includes(p.id);
+                              return (
+                                <button
+                                  key={p.id}
+                                  onClick={() => togglePlayerInTeeTime({ dayId: day.id, teeTimeId: tt.id, playerId: p.id })}
+                                  className={`px-3 py-1.5 rounded-xl text-sm ring-1 transition ${on ? "bg-slate-900 text-white ring-slate-900" : "bg-white text-slate-700 ring-slate-200"}`}
+                                >
+                                  {p.firstName} {p.lastName}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    <Button
+                      variant="secondary"
+                      className="rounded-xl"
+                      onClick={() => {
+                        const newId = `tt_${Math.random().toString(16).slice(2)}_${Date.now()}`;
+                        const newTT = { id: newId, time: "09:30", playerIds: [] };
+                        updateDay(day.id, { teeTimes: [...day.teeTimes, newTT].sort((a, b) => a.time.localeCompare(b.time)) });
+                      }}
+                    >
+                      <Plus className="mr-2 h-4 w-4" /> Ajouter un départ
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">Classement</div>
+              <div className="flex items-center justify-between rounded-2xl bg-slate-50 ring-1 ring-slate-200 px-4 py-3">
+                <div>
+                  <div className="text-sm font-semibold">Afficher le brut dans le classement</div>
+                  <div className="text-xs text-slate-500">Le net reste le critère principal.</div>
+                </div>
+                <Switch checked={state.settings.showGrossInRanking} onCheckedChange={(v) => updateSettings({ showGrossInRanking: v })} />
+              </div>
+
+              <div>
+                <Label className="text-xs">Départage ex aequo</Label>
+                <Select value={state.settings.tieBreak} onValueChange={(v) => updateSettings({ tieBreak: v })}>
+                  <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="gross">Brut (plus petit)</SelectItem>
+                    <SelectItem value="latest">Saisie (plus ancienne)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-rose-700">Zone de réinitialisation</div>
+              <Button variant="destructive" className="w-full rounded-xl" onClick={resetAll}>
+                Réinitialiser toutes les données (local)
+              </Button>
+              <div className="text-[11px] text-slate-500">Les données sont stockées sur l'appareil (localStorage). Pour un usage multi-joueurs en temps réel, il faudra un serveur ou une base (Firebase, Supabase, etc.).</div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
+  const Home = () => (
+    <div className="space-y-4">
+      <PlayerPicker />
+      <DepartClockCard />
+      <ScheduleToday />
+
+      <Card className="rounded-2xl shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">Comment ça marche</CardTitle>
+          <CardDescription>3 étapes simples sur iPhone.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm text-slate-700">
+          <ol className="list-decimal pl-4 space-y-1">
+            <li>Créez votre profil joueur (prénom + nom).</li>
+            <li>Dans « Organisation », assignez les joueurs aux départs (tee times).</li>
+            <li>Après la partie, saisissez votre score brut & net dans « Scores ». Le classement quotidien se met à jour automatiquement.</li>
+          </ol>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const Scores = () => (
+    <div className="space-y-4">
+      <ScoresQuickEntry />
+      <Card className="rounded-2xl shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">Accès rapide</CardTitle>
+          <CardDescription>Aller au classement ou à l'organisation.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-2">
+          <Button variant="secondary" className="rounded-xl" onClick={() => setTab("classements")}>Classements</Button>
+          <Button variant="secondary" className="rounded-xl" onClick={() => setTab("organisation")}>Organisation</Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const Classements = () => (
+    <div className="space-y-4">
+      {state.days.map((day) => (
+        <DailyRankingCard key={day.id} day={day} />
+      ))}
+    </div>
+  );
+
+  return (
+    <Shell>
+      <Header />
+
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
+        <TabsList className="grid grid-cols-5 rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+          <TabsTrigger value="accueil" className="rounded-2xl">Accueil</TabsTrigger>
+          <TabsTrigger value="scores" className="rounded-2xl">Scores</TabsTrigger>
+          <TabsTrigger value="classements" className="rounded-2xl">Classements</TabsTrigger>
+          <TabsTrigger value="joueurs" className="rounded-2xl">Joueurs</TabsTrigger>
+          <TabsTrigger value="organisation" className="rounded-2xl">Organisation</TabsTrigger>
+        </TabsList>
+
+        <div className="mt-4">
+          <TabsContent value="accueil">
+            <Home />
+          </TabsContent>
+          <TabsContent value="scores">
+            <Scores />
+          </TabsContent>
+          <TabsContent value="classements">
+            <Classements />
+          </TabsContent>
+          <TabsContent value="joueurs">
+            <PlayersManager />
+          </TabsContent>
+          <TabsContent value="organisation">
+            <Organization />
+          </TabsContent>
+        </div>
+      </Tabs>
+
+      <div className="mt-6 text-center text-[11px] text-slate-500">
+        Données locales • Optimisé iPhone • Version 1
+      </div>
+    </Shell>
+  );
+}
