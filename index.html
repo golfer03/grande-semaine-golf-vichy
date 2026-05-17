@@ -51,20 +51,17 @@ input, select {
 
 <h1>🏌️ Grande Semaine Vichy</h1>
 
-<!-- ✅ METEO -->
 <div class="card">
 <h3>🌤️ Météo du jour</h3>
 <div id="meteo">Chargement...</div>
 </div>
 
-<!-- ✅ HORLOGE -->
 <div class="card" id="clockCard">
 <h3>⏰ Horloge</h3>
 <div id="clock"></div>
 <div id="countdown"></div>
 </div>
 
-<!-- ✅ JOUEUR -->
 <div class="card">
 <h3>Créer joueur</h3>
 <input id="prenom">
@@ -72,19 +69,16 @@ input, select {
 <button onclick="addPlayer()">Ajouter</button>
 </div>
 
-<!-- ✅ JOUEUR ACTIF -->
 <div class="card">
 <h3>👤 Joueur actif</h3>
 <select id="activePlayer"></select>
 </div>
 
-<!-- ✅ PLANNING -->
 <div class="card">
 <h3>📅 Planning du jour</h3>
 <ul id="todayPlanning"></ul>
 </div>
 
-<!-- ✅ DEPARTS -->
 <div class="card">
 <h3>Départs</h3>
 <select id="daySelect">
@@ -92,13 +86,14 @@ input, select {
 <option value="1">Jour 2</option>
 <option value="2">Jour 3</option>
 </select>
+
 <input id="time" placeholder="09:10">
 <select id="playerSelect"></select>
+
 <button onclick="assignTeeTime()">Ajouter départ</button>
 <ul id="teeTimes"></ul>
 </div>
 
-<!-- ✅ SCORE -->
 <div class="card">
 <h3>Score</h3>
 <select id="scorePlayer"></select>
@@ -106,7 +101,6 @@ input, select {
 <button onclick="saveScore()">Enregistrer</button>
 </div>
 
-<!-- ✅ CLASSEMENT -->
 <div class="card">
 <h3>Classement</h3>
 <ul id="ranking"></ul>
@@ -114,11 +108,30 @@ input, select {
 
 </div>
 
-<!-- ✅ FIREBASE -->
+<!-- ✅ FIREBASE CORRIGÉ -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 
 <script>
+
+// ✅ VARIABLES SAFE
+const prenom = document.getElementById("prenom");
+const nom = document.getElementById("nom");
+const playerSelect = document.getElementById("playerSelect");
+const scorePlayer = document.getElementById("scorePlayer");
+const activePlayer = document.getElementById("activePlayer");
+const teeTimesEl = document.getElementById("teeTimes");
+const ranking = document.getElementById("ranking");
+const clock = document.getElementById("clock");
+const countdown = document.getElementById("countdown");
+const clockCard = document.getElementById("clockCard");
+const meteo = document.getElementById("meteo");
+const todayPlanning = document.getElementById("todayPlanning");
+const daySelect = document.getElementById("daySelect");
+const timeInput = document.getElementById("time");
+const scoreInput = document.getElementById("score");
+
+// FIREBASE
 const firebaseConfig = {
   apiKey: "XXX",
   databaseURL: "XXX"
@@ -134,10 +147,13 @@ let activePlayerId = null;
 
 // ✅ JOUEURS
 function addPlayer(){
+    if(!prenom.value || !nom.value) return;
     db.ref("players").push({
         prenom: prenom.value,
         nom: nom.value
     });
+    prenom.value = "";
+    nom.value = "";
 }
 
 db.ref("players").on("value", snap=>{
@@ -162,11 +178,15 @@ activePlayer.onchange = ()=> activePlayerId = activePlayer.value;
 
 // ✅ DEPARTS
 function assignTeeTime(){
+    if(!timeInput.value) return;
+
     db.ref("teeTimes").push({
         day: daySelect.value,
-        time: time.value,
+        time: timeInput.value,
         player: playerSelect.value
     });
+
+    timeInput.value="";
 }
 
 db.ref("teeTimes").on("value", snap=>{
@@ -179,17 +199,23 @@ function displayTeeTimes(){
     teeTimesEl.innerHTML="";
     teeTimes.forEach(t=>{
         const p = players.find(x=>x.id===t.player);
-        if(!p) return;
-        teeTimesEl.innerHTML += `<li>Jour ${+t.day+1} - ${t.time} <span class="badge">${p.prenom}</span></li>`;
+        if(!p || !t.time) return;
+
+        teeTimesEl.innerHTML +=
+        `<li>Jour ${+t.day+1} - ${t.time} <span class="badge">${p.prenom}</span></li>`;
     });
 }
 
 // ✅ SCORES
 function saveScore(){
+    if(!scoreInput.value) return;
+
     db.ref("scores").push({
         player: scorePlayer.value,
-        score: Number(score.value)
+        score: Number(scoreInput.value)
     });
+
+    scoreInput.value="";
 }
 
 db.ref("scores").on("value", snap=>{
@@ -200,42 +226,38 @@ db.ref("scores").on("value", snap=>{
 
 function displayRanking(){
     ranking.innerHTML="";
+
     scores.sort((a,b)=>a.score-b.score);
 
     scores.forEach((s,i)=>{
         const p = players.find(x=>x.id===s.player);
         if(!p) return;
-        ranking.innerHTML += `<li>#${i+1} ${p.prenom} ${p.nom} → ${s.score}</li>`;
+
+        ranking.innerHTML +=
+        `<li>#${i+1} ${p.prenom} ${p.nom} → ${s.score}</li>`;
     });
 }
 
 // ✅ METEO BELLERIVE
 function loadMeteo(){
-    const lat = 46.12;
-    const lon = 3.40;
-
-    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=precipitation_probability`)
+    fetch(`https://api.open-meteo.com/v1/forecast?latitude=46.12&longitude=3.40&current_weather=true&hourly=precipitation_probability`)
     .then(r=>r.json())
     .then(data=>{
         const temp = data.current_weather.temperature;
         const pluie = data.hourly.precipitation_probability[new Date().getHours()];
 
-        let icon = "☀️";
-        if(pluie > 50) icon = "🌧️";
-        else if(pluie > 20) icon = "⛅";
+        let icon="☀️";
+        if(pluie>50) icon="🌧️";
+        else if(pluie>20) icon="⛅";
 
         meteo.innerHTML =
-        `<div style="font-size:18px;font-weight:bold;">
-            ${icon} ${temp}°C
-        </div>
-        <div style="color:gray;">
-            ☔ ${pluie}% pluie (Bellerive-sur-Allier)
-        </div>`;
+        `${icon} ${temp}°C<br>☔ ${pluie}% pluie (Bellerive)`;
+
     })
-    .catch(()=> meteo.innerText="Météo indisponible");
+    .catch(()=> meteo.innerHTML="⚠️ Météo indisponible");
 }
 
-// ✅ HORLOGE + COMPTE A REBOURS
+// ✅ HORLOGE + IA
 function updateClock(){
     const now = new Date();
     clock.innerText = now.toLocaleTimeString();
@@ -247,48 +269,55 @@ function updateClock(){
 // ✅ COMPTE A REBOURS
 function updatePersonalCountdown(now){
     if(!activePlayerId){
-        countdown.innerText = "Sélectionne un joueur";
+        countdown.innerText="Choisir joueur";
         return;
     }
 
-    let next = null;
+    let next=null;
 
     teeTimes.forEach(t=>{
-        if(t.player !== activePlayerId) return;
+        if(t.player!==activePlayerId || !t.time) return;
 
-        const [h,m] = (t.time||"00:00").split(":");
-        const d = new Date();
+        const [h,m]=t.time.split(":");
+        const d=new Date();
         d.setHours(h,m,0);
 
-        if(d > now && (!next || d < next)) next = d;
+        if(d>now && (!next || d<next)) next=d;
     });
 
     if(!next){
-        countdown.innerText = "✅ Aucun départ";
+        countdown.innerText="✅ Aucun départ";
         return;
     }
 
-    const diff = next - now;
-    const min = Math.floor(diff/60000);
-    const sec = Math.floor((diff%60000)/1000);
+    const diff=next-now;
+    const min=Math.floor(diff/60000);
+    const sec=Math.floor((diff%60000)/1000);
 
-    countdown.innerText = `👤 Départ dans ${min}m ${sec}s`;
+    countdown.innerText=`👤 Départ dans ${min}m ${sec}s`;
 
-    if(diff < 600000){
+    if(diff<600000){
         clockCard.classList.add("alert");
 
         if(!window.alertPlayed){
             window.alertPlayed=true;
 
             if(navigator.vibrate) navigator.vibrate([200,100,200]);
-            new Audio("https://www.soundjay.com/buttons/beep-07.wav").play();
-        }
 
+            if(window.userInteracted){
+                new Audio("https://www.soundjay.com/buttons/beep-07.wav").play();
+            }
+        }
     } else {
         clockCard.classList.remove("alert");
         window.alertPlayed=false;
     }
 }
+
+// interaction utilisateur (iPhone fix son)
+document.body.addEventListener("click", ()=>{
+    window.userInteracted=true;
+});
 
 // ✅ PLANNING
 function displayTodayPlanning(now){
@@ -296,22 +325,21 @@ function displayTodayPlanning(now){
 
     teeTimes.forEach(t=>{
         const p = players.find(x=>x.id===t.player);
-        if(!p) return;
+        if(!p || !t.time) return;
 
-        const [h,m] = (t.time||"00:00").split(":");
-        const d = new Date();
+        const [h,m]=t.time.split(":");
+        const d=new Date();
         d.setHours(h,m,0);
 
         let cls="";
         if(d-now<600000 && d>now) cls="soon";
 
-        todayPlanning.innerHTML += `<li class="${cls}">
-        ${t.time} - ${p.prenom}
-        </li>`;
+        todayPlanning.innerHTML +=
+        `<li class="${cls}">${t.time} - ${p.prenom}</li>`;
     });
 }
 
-// ✅ LANCEMENT
+// ✅ LOOP
 setInterval(updateClock,1000);
 setInterval(loadMeteo,3600000);
 
@@ -322,3 +350,4 @@ loadMeteo();
 
 </body>
 </html>
+``
