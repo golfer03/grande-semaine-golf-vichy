@@ -123,6 +123,7 @@ const firebaseConfig = {
   apiKey: "XXX",
   databaseURL: "XXX"
 };
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
@@ -131,7 +132,7 @@ let teeTimes = [];
 let scores = [];
 let activePlayerId = null;
 
-// JOUEURS
+// ✅ JOUEURS
 function addPlayer(){
     db.ref("players").push({
         prenom: prenom.value,
@@ -159,7 +160,7 @@ function refreshPlayers(){
 
 activePlayer.onchange = ()=> activePlayerId = activePlayer.value;
 
-// DEPARTS
+// ✅ DEPARTS
 function assignTeeTime(){
     db.ref("teeTimes").push({
         day: daySelect.value,
@@ -183,7 +184,7 @@ function displayTeeTimes(){
     });
 }
 
-// SCORES
+// ✅ SCORES
 function saveScore(){
     db.ref("scores").push({
         player: scorePlayer.value,
@@ -208,9 +209,10 @@ function displayRanking(){
     });
 }
 
-// ✅ METEO
+// ✅ METEO BELLERIVE
 function loadMeteo(){
-    const lat = 46.13, lon = 3.42;
+    const lat = 46.12;
+    const lon = 3.40;
 
     fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=precipitation_probability`)
     .then(r=>r.json())
@@ -218,13 +220,22 @@ function loadMeteo(){
         const temp = data.current_weather.temperature;
         const pluie = data.hourly.precipitation_probability[new Date().getHours()];
 
-        document.getElementById("meteo").innerHTML =
-        `🌡️ ${temp}°C<br>☔ ${pluie}% pluie`;
+        let icon = "☀️";
+        if(pluie > 50) icon = "🌧️";
+        else if(pluie > 20) icon = "⛅";
+
+        meteo.innerHTML =
+        `<div style="font-size:18px;font-weight:bold;">
+            ${icon} ${temp}°C
+        </div>
+        <div style="color:gray;">
+            ☔ ${pluie}% pluie (Bellerive-sur-Allier)
+        </div>`;
     })
     .catch(()=> meteo.innerText="Météo indisponible");
 }
 
-// ✅ HORLOGE + LOGIQUE
+// ✅ HORLOGE + COMPTE A REBOURS
 function updateClock(){
     const now = new Date();
     clock.innerText = now.toLocaleTimeString();
@@ -233,7 +244,7 @@ function updateClock(){
     displayTodayPlanning(now);
 }
 
-// COMPTE A REBOURS
+// ✅ COMPTE A REBOURS
 function updatePersonalCountdown(now){
     if(!activePlayerId){
         countdown.innerText = "Sélectionne un joueur";
@@ -261,7 +272,7 @@ function updatePersonalCountdown(now){
     const min = Math.floor(diff/60000);
     const sec = Math.floor((diff%60000)/1000);
 
-    countdown.innerText = `👤 ${min}m ${sec}s`;
+    countdown.innerText = `👤 Départ dans ${min}m ${sec}s`;
 
     if(diff < 600000){
         clockCard.classList.add("alert");
@@ -279,7 +290,7 @@ function updatePersonalCountdown(now){
     }
 }
 
-// PLANNING
+// ✅ PLANNING
 function displayTodayPlanning(now){
     todayPlanning.innerHTML="";
 
@@ -300,7 +311,7 @@ function displayTodayPlanning(now){
     });
 }
 
-// LANCEMENT
+// ✅ LANCEMENT
 setInterval(updateClock,1000);
 setInterval(loadMeteo,3600000);
 
