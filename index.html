@@ -1,6 +1,5 @@
-
-
-
+Mini site iPhone — Compétition de golf (multi-jours)
+```JSXWithTailwinds
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -73,19 +72,20 @@ function safeSave(state) {
 }
 
 // --- Données par défaut (modifiable dans l'onglet "Organisation") ---
-// Compétition : 6 jours du lundi 03/08/2026 au samedi 08/08/2026
+// Grande Semaine de Vichy 2026 : 6 jours du lundi 03/08/2026 au samedi 08/08/2026
 const defaultState = (() => {
   const teeTimesTemplate = [
-    { id: "tt1", time: "09:00", playerIds: [] },
-    { id: "tt2", time: "09:10", playerIds: [] },
-    { id: "tt3", time: "09:20", playerIds: [] },
-  ];
+    { id: "tt1", time: "09:00", playerIds: [] },
+    { id: "tt2", time: "09:10", playerIds: [] },
+    { id: "tt3", time: "09:20", playerIds: [] },
+  ];
+
   return {
     competition: {
-      title: "Compétition de Golf — Multi-jours",
-      subtitle: "Saisie des scores, départs et classement quotidien",
+      title: "Grande Semaine de Vichy 2026",
+      subtitle: "Compétition sur 6 jours — Brut & net",
       club: "",
-      format: "Stroke play (brut & net)",
+      format: "Multi-formules (voir détail par jour)",
       timezoneHint: "Heure locale de l'appareil (Europe/Paris si iPhone en France)",
     },
     players: [],
@@ -107,35 +107,39 @@ const defaultState = (() => {
       },
       {
         id: "day3",
-        label: "Mercredi",
+        label: "Jour 3",
         date: "2026-08-05",
-        notes: "",
-        teeTimes: teeTimesTemplate.map((t) => ({ ...t })),
-      },
-      {
-        id: "day4",
-        label: "Jeudi",
-        date: "2026-08-06",
-        notes: "",
-        teeTimes: teeTimesTemplate.map((t) => ({ ...t })),
-      },
-      {
-        id: "day5",
-        label: "Vendredi",
-        date: "2026-08-07",
-        notes: "",
-        teeTimes: teeTimesTemplate.map((t) => ({ ...t })),
-      },
-      {
-        id: "day6",
-        label: "Samedi",
-        date: "2026-08-08",
+        notes: "",
+        teeTimes: teeTimesTemplate.map((t) => ({ ...t })),
+      },
+      {
+        id: "day4",
+        label: "Jour 4",
+        date: "2026-08-06",
+        notes: "",
+        teeTimes: teeTimesTemplate.map((t) => ({ ...t })),
+      },
+      {
+        id: "day5",
+        label: "Jour 5",
+        date: "2026-08-07",
+        notes: "",
+        teeTimes: teeTimesTemplate.map((t) => ({ ...t })),
+      },
+      {
+        id: "day6",
+        label: "Jour 6",
+        date: "2026-08-08",
         notes: "Remise des prix 18:00",
         teeTimes: teeTimesTemplate.map((t) => ({ ...t })),
       },
     ],
     scores: {
       // dayId: { playerId: { gross: number, net: number, ts: ISO } }
+    },
+    teamScores: {
+      // dayId: { teamKey: { gross: number, net: number, ts: ISO } }
+      // teamKey = "playerIdA|playerIdB" (trié)
     },
     settings: {
       showGrossInRanking: true,
@@ -179,7 +183,7 @@ export default function GolfCompetitionMiniSite() {
       }
     }
     occurrences.sort((a, b) => a.dt - b.dt);
-    const upcoming = occurrences.find((o) => o.dt.getTime() >= now.getTime() - 60 * 1000); // tolérance 1 minute
+    const upcoming = occurrences.find((o) => o.dt.getTime() >= now.getTime() - 60 * 1000);
     return upcoming ?? occurrences[occurrences.length - 1] ?? null;
   }, [activePlayer, state.days, now]);
 
@@ -199,6 +203,7 @@ export default function GolfCompetitionMiniSite() {
         ...d,
         teeTimes: d.teeTimes.map((tt) => ({ ...tt, playerIds: tt.playerIds.filter((id) => id !== playerId) })),
       }));
+
       const scores = { ...s.scores };
       for (const dayId of Object.keys(scores)) {
         if (scores[dayId]?.[playerId]) {
@@ -207,8 +212,24 @@ export default function GolfCompetitionMiniSite() {
           scores[dayId] = copy;
         }
       }
+
+      // Nettoyage teamScores (si le joueur était dans une équipe)
+      const teamScores = { ...(s.teamScores ?? {}) };
+      for (const dayId of Object.keys(teamScores)) {
+        const dayTeams = { ...(teamScores[dayId] ?? {}) };
+        let changed = false;
+        for (const k of Object.keys(dayTeams)) {
+          const ids = k.split("|");
+          if (ids.includes(playerId)) {
+            delete dayTeams[k];
+            changed = true;
+          }
+        }
+        if (changed) teamScores[dayId] = dayTeams;
+      }
+
       const activePlayerId = s.activePlayerId === playerId ? (players[0]?.id ?? null) : s.activePlayerId;
-      return { ...s, players, days, scores, activePlayerId };
+      return { ...s, players, days, scores, teamScores, activePlayerId };
     });
   };
 
@@ -219,6 +240,7 @@ export default function GolfCompetitionMiniSite() {
     const n = net === "" ? "" : Number(net);
     if (g === "" || n === "") return;
     if (!Number.isFinite(g) || !Number.isFinite(n)) return;
+
     setState((s) => {
       const dayScores = s.scores[dayId] ?? {};
       return {
@@ -262,7 +284,7 @@ export default function GolfCompetitionMiniSite() {
     setTab("accueil");
   };
 
-  // --- Classements ---
+  // --- Classements (quotidiens) ---
   const rankingForDay = (dayId) => {
     const dayScores = state.scores[dayId] ?? {};
     const rows = state.players
@@ -279,30 +301,300 @@ export default function GolfCompetitionMiniSite() {
       .filter((r) => r.hasScore);
 
     rows.sort((a, b) => {
-      // 1) net croissant
       if (a.net !== b.net) return a.net - b.net;
-      // 2) tie-break
       if (state.settings.tieBreak === "gross") {
         if (a.gross !== b.gross) return a.gross - b.gross;
       } else if (state.settings.tieBreak === "latest") {
-        // le plus ancien en premier (évite de récompenser la saisie tardive)
         if (a.ts && b.ts) return new Date(a.ts) - new Date(b.ts);
       }
-      // 3) nom
       const an = `${a.player.lastName} ${a.player.firstName}`.toLowerCase();
       const bn = `${b.player.lastName} ${b.player.firstName}`.toLowerCase();
       return an.localeCompare(bn);
     });
 
-    // Attribution des places avec ex aequo
     let place = 0;
     let lastKey = null;
+
     return rows.map((r, idx) => {
       const key = `${r.net}|${state.settings.tieBreak === "gross" ? r.gross : "_"}`;
       if (key !== lastKey) place = idx + 1;
       lastKey = key;
       return { ...r, place };
     });
+  };
+
+  // --- Classement général (individuel) ---
+  const rankingGeneral = () => {
+    const totals = state.players.map((p) => {
+      let netTotal = 0;
+      let grossTotal = 0;
+      let played = 0;
+
+      for (const d of state.days) {
+        const sc = state.scores?.[d.id]?.[p.id];
+        if (sc && Number.isFinite(sc.net) && Number.isFinite(sc.gross)) {
+          netTotal += sc.net;
+          grossTotal += sc.gross;
+          played += 1;
+        }
+      }
+
+      return { player: p, netTotal, grossTotal, played };
+    });
+
+    const valid = totals.filter((r) => r.played > 0);
+
+    valid.sort((a, b) => {
+      if (a.netTotal !== b.netTotal) return a.netTotal - b.netTotal;
+      if (a.grossTotal !== b.grossTotal) return a.grossTotal - b.grossTotal;
+      const an = `${a.player.lastName} ${a.player.firstName}`.toLowerCase();
+      const bn = `${b.player.lastName} ${b.player.firstName}`.toLowerCase();
+      return an.localeCompare(bn);
+    });
+
+    let place = 0;
+    let lastKey = null;
+
+    return valid.map((r, idx) => {
+      const key = `${r.netTotal}|${r.grossTotal}`;
+      if (key !== lastKey) place = idx + 1;
+      lastKey = key;
+      return { ...r, place };
+    });
+  };
+
+  // --- Leaderboard premium temps réel (style tournoi pro) ---
+  const LiveDot = () => (
+    <motion.span
+      className="inline-flex items-center gap-2"
+      initial={{ opacity: 0.9 }}
+      animate={{ opacity: [0.35, 0.95, 0.35] }}
+      transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+    >
+      <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.6)]" />
+      <span className="text-[11px] tracking-wide text-emerald-700">LIVE</span>
+    </motion.span>
+  );
+
+  const getLastUpdatedISO = (mode) => {
+    // mode = 'general' | dayId
+    let maxTs = null;
+    const consider = (ts) => {
+      if (!ts) return;
+      if (!maxTs || new Date(ts).getTime() > new Date(maxTs).getTime()) maxTs = ts;
+    };
+
+    if (mode === "general") {
+      for (const dayId of Object.keys(state.scores ?? {})) {
+        const dayScores = state.scores?.[dayId] ?? {};
+        for (const pid of Object.keys(dayScores)) consider(dayScores[pid]?.ts);
+      }
+      return maxTs;
+    }
+
+    const dayScores = state.scores?.[mode] ?? {};
+    for (const pid of Object.keys(dayScores)) consider(dayScores[pid]?.ts);
+    return maxTs;
+  };
+
+  const LeaderRow = ({ row, movement }) => {
+    const isActive = row.player.id === state.activePlayerId;
+    const badge = movement === 0 ? null : movement > 0 ? "up" : "down";
+
+    return (
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 8, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -8, scale: 0.98 }}
+        transition={{ type: "spring", stiffness: 450, damping: 35 }}
+        className={
+          `flex items-center justify-between rounded-2xl px-4 py-3 ring-1 ` +
+          (isActive ? "bg-slate-50 ring-slate-300" : "bg-white ring-slate-200")
+        }
+      >
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-700 text-white flex items-center justify-center font-semibold tabular-nums shadow-sm">
+              {row.place}
+            </div>
+            {badge ? (
+              <div
+                className={
+                  "absolute -right-1 -top-1 h-5 min-w-5 px-1 rounded-xl text-[10px] font-semibold flex items-center justify-center ring-1 " +
+                  (badge === "up"
+                    ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                    : "bg-rose-50 text-rose-700 ring-rose-200")
+                }
+              >
+                {badge === "up" ? "▲" : "▼"}
+              </div>
+            ) : null}
+          </div>
+
+          <div>
+            <div className="text-sm font-semibold leading-tight">{row.player.firstName} {row.player.lastName}</div>
+            {row.mode === "general" ? (
+              <div className="text-xs text-slate-500">
+                Net total: <span className="font-semibold tabular-nums">{row.netTotal}</span>
+                {" "}• Brut total: <span className="font-semibold tabular-nums">{row.grossTotal}</span>
+                {" "}• Jours: <span className="font-semibold tabular-nums">{row.played}</span>
+              </div>
+            ) : (
+              <div className="text-xs text-slate-500">
+                Net: <span className="font-semibold tabular-nums">{row.net}</span>
+                {state.settings.showGrossInRanking ? (
+                  <>
+                    {" "}• Brut: <span className="font-semibold tabular-nums">{row.gross}</span>
+                  </>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <Button
+          variant="secondary"
+          className="rounded-xl"
+          onClick={() => {
+            setActive(row.player.id);
+            setTab("scores");
+          }}
+        >
+          {row.mode === "general" ? "Voir" : "Modifier"}
+        </Button>
+      </motion.div>
+    );
+  };
+
+  const LeaderboardPro = () => {
+    const [mode, setMode] = useState("general"); // 'general' | dayId
+
+    const rows = useMemo(() => {
+      if (mode === "general") return rankingGeneral().map((r) => ({ ...r, mode: "general" }));
+      return rankingForDay(mode).map((r) => ({ ...r, mode }));
+    }, [mode, state.players, state.days, state.scores, state.settings]);
+
+    // mouvement de places depuis le dernier rendu
+    const prevOrderRef = useRef([]);
+
+    const movementById = useMemo(() => {
+      const prev = prevOrderRef.current;
+      const prevIndex = new Map(prev.map((id, i) => [id, i]));
+      const cur = rows.map((r) => r.player.id);
+      const mov = new Map();
+      cur.forEach((id, i) => {
+        if (!prevIndex.has(id)) mov.set(id, 0);
+        else mov.set(id, prevIndex.get(id) - i);
+      });
+      return mov;
+    }, [rows]);
+
+    useEffect(() => {
+      prevOrderRef.current = rows.map((r) => r.player.id);
+    }, [rows]);
+
+    const lastISO = useMemo(() => getLastUpdatedISO(mode), [mode, state.scores, state.teamScores]);
+    const leader = rows[0] ?? null;
+
+    return (
+      <div className="space-y-4">
+        <Card className="rounded-2xl shadow-sm overflow-hidden">
+          <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white px-5 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[11px] tracking-widest text-white/70">LEADERBOARD</div>
+                <div className="mt-1 text-lg font-semibold">
+                  Tournoi — {mode === "general" ? "Général" : (state.days.find((d) => d.id === mode)?.label ?? "Journée")}
+                </div>
+                <div className="mt-1 text-xs text-white/70">Mises à jour instantanées à chaque saisie sur l'appareil</div>
+              </div>
+              <LiveDot />
+            </div>
+
+            <div className="mt-4 flex items-center justify-between rounded-2xl bg-white/10 ring-1 ring-white/15 px-4 py-3">
+              {leader ? (
+                <>
+                  <div>
+                    <div className="text-xs text-white/70">Leader</div>
+                    <div className="text-base font-semibold leading-tight">{leader.player.firstName} {leader.player.lastName}</div>
+                    <div className="text-xs text-white/70 mt-1">
+                      {mode === "general" ? (
+                        <>Net total <span className="font-semibold tabular-nums text-white">{leader.netTotal}</span> • Brut total <span className="font-semibold tabular-nums text-white">{leader.grossTotal}</span></>
+                      ) : (
+                        <>Net <span className="font-semibold tabular-nums text-white">{leader.net}</span>{state.settings.showGrossInRanking ? <> • Brut <span className="font-semibold tabular-nums text-white">{leader.gross}</span></> : null}</>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-white/70">Dernière saisie</div>
+                    <div className="text-sm font-semibold tabular-nums">{lastISO ? new Date(lastISO).toLocaleString() : "—"}</div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm text-white/80">Aucun score saisi pour le moment.</div>
+              )}
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => setMode("general")}
+                className={
+                  "px-3 py-2 rounded-xl text-sm ring-1 transition " +
+                  (mode === "general" ? "bg-white text-slate-900 ring-white" : "bg-white/10 text-white ring-white/15")
+                }
+              >
+                Général
+              </button>
+              <div className="flex-1 overflow-x-auto">
+                <div className="flex gap-2">
+                  {state.days.map((d) => (
+                    <button
+                      key={d.id}
+                      onClick={() => setMode(d.id)}
+                      className={
+                        "px-3 py-2 rounded-xl text-sm whitespace-nowrap ring-1 transition " +
+                        (mode === d.id ? "bg-white text-slate-900 ring-white" : "bg-white/10 text-white ring-white/15")
+                      }
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <CardContent className="space-y-2 p-4">
+            <AnimatePresence initial={false}>
+              {rows.slice(0, 20).map((r) => (
+                <LeaderRow
+                  key={`${mode}_${r.player.id}`}
+                  row={r}
+                  movement={movementById.get(r.player.id) ?? 0}
+                />
+              ))}
+            </AnimatePresence>
+
+            {rows.length > 20 ? (
+              <div className="text-[11px] text-slate-500 pt-1">Affichage limité aux 20 premiers pour un rendu fluide sur iPhone.</div>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base">Détails “temps réel”</CardTitle>
+            <CardDescription>Animations de changements de places + indicateur LIVE.</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-slate-700 space-y-2">
+            <div>• Les places s’animent automatiquement dès qu’un score est saisi/modifié.</div>
+            <div>• Jour 2 : score d’équipe (scramble à 2) saisi une fois et appliqué individuellement aux 2 joueurs.</div>
+            <div className="text-[11px] text-slate-500">Pour un « temps réel » multi-iPhone (tous voient la même chose), il faudra une base en ligne (Firebase/Supabase).</div>
+          </CardContent>
+        </Card>
+      </div>
+    );
   };
 
   // --- UI helpers ---
@@ -340,51 +632,6 @@ export default function GolfCompetitionMiniSite() {
   );
 
   // --- Sous-composants ---
-  const PlayerPicker = () => {
-    if (state.players.length === 0) {
-      return (
-        <Card className="rounded-2xl shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base">Créez votre profil joueur</CardTitle>
-            <CardDescription>Nom + prénom, puis sélectionnez votre profil.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <PlayerForm mode="create" />
-          </CardContent>
-        </Card>
-      );
-    }
-
-    return (
-      <Card className="rounded-2xl shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-base">Joueur actif</CardTitle>
-          <CardDescription>Le joueur actif sert pour le compte à rebours et la saisie rapide.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Select value={state.activePlayerId ?? ""} onValueChange={(v) => setActive(v)}>
-            <SelectTrigger className="rounded-xl">
-              <SelectValue placeholder="Choisir un joueur" />
-            </SelectTrigger>
-            <SelectContent>
-              {state.players.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.firstName} {p.lastName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="secondary" className="rounded-xl" onClick={() => setTab("joueurs")}>Gérer joueurs</Button>
-            <Button className="rounded-xl" onClick={() => setTab("scores")}>
-              Saisir score <ChevronRight className="ml-1 h-4 w-4" />
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
-
   const PlayerForm = ({ mode, initial, onDone }) => {
     const [firstName, setFirstName] = useState(initial?.firstName ?? "");
     const [lastName, setLastName] = useState(initial?.lastName ?? "");
@@ -422,56 +669,89 @@ export default function GolfCompetitionMiniSite() {
     );
   };
 
-  const DepartClockCard = () => {
+  const PlayerPicker = () => {
+    if (state.players.length === 0) {
+      return (
+        <Card className="rounded-2xl shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base">Créez votre profil joueur</CardTitle>
+            <CardDescription>Nom + prénom, puis sélectionnez votre profil.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PlayerForm mode="create" />
+          </CardContent>
+        </Card>
+      );
+    }
+
     return (
       <Card className="rounded-2xl shadow-sm">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Clock className="h-4 w-4" /> Horloge des départs
-          </CardTitle>
-          <CardDescription>Compte à rebours vers le prochain départ du joueur actif.</CardDescription>
+          <CardTitle className="text-base">Joueur actif</CardTitle>
+          <CardDescription>Le joueur actif sert pour le compte à rebours et la saisie rapide.</CardDescription>
         </CardHeader>
-        <CardContent>
-          {!activePlayer ? (
-            <div className="text-sm text-slate-600">Sélectionnez un joueur actif pour afficher son prochain départ.</div>
-          ) : !nextDepartForActive ? (
-            <div className="text-sm text-slate-600">Aucun départ assigné à {activePlayer.firstName} {activePlayer.lastName}. Ajoutez-le dans l'onglet Organisation.</div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-2xl bg-slate-50 ring-1 ring-slate-200 px-4 py-3">
-                <div>
-                  <div className="text-xs text-slate-500">Prochain départ</div>
-                  <div className="text-base font-semibold">{nextDepartForActive.day.label} — {formatDateFR(nextDepartForActive.day.date)}</div>
-                  <div className="text-sm text-slate-600">Tee time: <span className="font-semibold tabular-nums">{nextDepartForActive.tt.time}</span></div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-slate-500">Compte à rebours</div>
-                  <div className="text-lg font-semibold tabular-nums">
-                    {formatCountdown(nextDepartForActive.dt.getTime() - now.getTime())}
-                  </div>
-                </div>
-              </div>
-              <div className="text-[11px] text-slate-500">
-                Astuce : si l'heure est négative, le départ est passé. Vérifiez les assignations dans « Organisation ».
-              </div>
-            </div>
-          )}
+        <CardContent className="space-y-3">
+          <Select value={state.activePlayerId ?? ""} onValueChange={(v) => setActive(v)}>
+            <SelectTrigger className="rounded-xl">
+              <SelectValue placeholder="Choisir un joueur" />
+            </SelectTrigger>
+            <SelectContent>
+              {state.players.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.firstName} {p.lastName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="secondary" className="rounded-xl" onClick={() => setTab("joueurs")}>Gérer joueurs</Button>
+            <Button className="rounded-xl" onClick={() => setTab("scores")}>Saisir score <ChevronRight className="ml-1 h-4 w-4" /></Button>
+          </div>
         </CardContent>
       </Card>
     );
   };
+
+  const DepartClockCard = () => (
+    <Card className="rounded-2xl shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Clock className="h-4 w-4" /> Horloge des départs
+        </CardTitle>
+        <CardDescription>Compte à rebours vers le prochain départ du joueur actif.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!activePlayer ? (
+          <div className="text-sm text-slate-600">Sélectionnez un joueur actif pour afficher son prochain départ.</div>
+        ) : !nextDepartForActive ? (
+          <div className="text-sm text-slate-600">Aucun départ assigné à {activePlayer.firstName} {activePlayer.lastName}. Ajoutez-le dans l'onglet Organisation.</div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between rounded-2xl bg-slate-50 ring-1 ring-slate-200 px-4 py-3">
+              <div>
+                <div className="text-xs text-slate-500">Prochain départ</div>
+                <div className="text-base font-semibold">{nextDepartForActive.day.label} — {formatDateFR(nextDepartForActive.day.date)}</div>
+                <div className="text-sm text-slate-600">Tee time: <span className="font-semibold tabular-nums">{nextDepartForActive.tt.time}</span></div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-slate-500">Compte à rebours</div>
+                <div className="text-lg font-semibold tabular-nums">{formatCountdown(nextDepartForActive.dt.getTime() - now.getTime())}</div>
+              </div>
+            </div>
+            <div className="text-[11px] text-slate-500">Astuce : si l'heure est négative, le départ est passé. Vérifiez les assignations dans « Organisation ».</div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 
   const ScheduleToday = () => {
     const day = todayDay;
     return (
       <Card className="rounded-2xl shadow-sm">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Calendar className="h-4 w-4" /> Départs du jour
-          </CardTitle>
-          <CardDescription>
-            {day.label} — {formatDateFR(day.date)} {day.notes ? `• ${day.notes}` : ""}
-          </CardDescription>
+          <CardTitle className="text-base flex items-center gap-2"><Calendar className="h-4 w-4" /> Départs du jour</CardTitle>
+          <CardDescription>{day.label} — {formatDateFR(day.date)} {day.notes ? `• ${day.notes}` : ""}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {day.teeTimes.map((tt) => {
@@ -499,9 +779,7 @@ export default function GolfCompetitionMiniSite() {
                   ) : (
                     <div className="flex flex-wrap gap-2">
                       {assigned.map((p) => (
-                        <Badge key={p.id} variant={p.id === state.activePlayerId ? "default" : "secondary"}>
-                          {p.firstName} {p.lastName}
-                        </Badge>
+                        <Badge key={p.id} variant={p.id === state.activePlayerId ? "default" : "secondary"}>{p.firstName} {p.lastName}</Badge>
                       ))}
                     </div>
                   )}
@@ -511,29 +789,50 @@ export default function GolfCompetitionMiniSite() {
           })}
           <div className="grid grid-cols-2 gap-2">
             <Button variant="secondary" className="rounded-xl" onClick={() => setTab("organisation")}>Organisation</Button>
-            <Button className="rounded-xl" onClick={() => setTab("classements")}>
-              Classement du jour <ChevronRight className="ml-1 h-4 w-4" />
-            </Button>
+            <Button className="rounded-xl" onClick={() => setTab("classements")}>Classement du jour <ChevronRight className="ml-1 h-4 w-4" /></Button>
           </div>
         </CardContent>
       </Card>
     );
   };
 
+  // --- Scores (Jour 2 = Scramble à 2 saisi en équipe, mais compté individuellement) ---
   const ScoresQuickEntry = () => {
     const [dayId, setDayId] = useState(state.days[0]?.id ?? "");
     const [gross, setGross] = useState("");
     const [net, setNet] = useState("");
+    const [partnerId, setPartnerId] = useState("");
 
     useEffect(() => {
-      // Préselection du jour en cours si possible
       setDayId(todayDay?.id ?? state.days[0]?.id ?? "");
     }, [todayDay?.id]);
 
+    const isTeamDay = dayId === "day2";
     const day = state.days.find((d) => d.id === dayId);
-    const currentScore = activePlayer && dayId ? (state.scores[dayId]?.[activePlayer.id] ?? null) : null;
+
+    const partnerOptions = useMemo(() => {
+      if (!activePlayer) return [];
+      return state.players.filter((p) => p.id !== activePlayer.id);
+    }, [state.players, activePlayer?.id]);
+
+    const canonicalTeamKey = useMemo(() => {
+      if (!activePlayer || !partnerId) return "";
+      return [activePlayer.id, partnerId].sort().join("|");
+    }, [activePlayer?.id, partnerId]);
+
+    const currentScore = useMemo(() => {
+      if (!activePlayer || !dayId) return null;
+      if (isTeamDay) return state.teamScores?.[dayId]?.[canonicalTeamKey] ?? null;
+      return state.scores?.[dayId]?.[activePlayer.id] ?? null;
+    }, [activePlayer?.id, dayId, isTeamDay, canonicalTeamKey, state.scores, state.teamScores]);
 
     useEffect(() => {
+      if (!isTeamDay) {
+        setPartnerId("");
+      } else {
+        if (partnerId && !partnerOptions.some((p) => p.id === partnerId)) setPartnerId("");
+      }
+
       if (currentScore) {
         setGross(String(currentScore.gross));
         setNet(String(currentScore.net));
@@ -541,15 +840,56 @@ export default function GolfCompetitionMiniSite() {
         setGross("");
         setNet("");
       }
-    }, [dayId, state.activePlayerId]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dayId, state.activePlayerId, isTeamDay, canonicalTeamKey]);
+
+    const saveTeamScore = () => {
+      if (!activePlayer || !partnerId) return;
+      const g = gross === "" ? "" : Number(gross);
+      const n = net === "" ? "" : Number(net);
+      if (g === "" || n === "") return;
+      if (!Number.isFinite(g) || !Number.isFinite(n)) return;
+
+      const teamKey = canonicalTeamKey;
+      const [p1, p2] = teamKey.split("|");
+      const ts = new Date().toISOString();
+
+      setState((s) => {
+        const teamScores = s.teamScores ?? {};
+        const dayTeamScores = teamScores[dayId] ?? {};
+        const scores = s.scores ?? {};
+        const dayScores = scores[dayId] ?? {};
+
+        return {
+          ...s,
+          teamScores: {
+            ...teamScores,
+            [dayId]: {
+              ...dayTeamScores,
+              [teamKey]: { gross: g, net: n, ts },
+            },
+          },
+          scores: {
+            ...scores,
+            [dayId]: {
+              ...dayScores,
+              [p1]: { gross: g, net: n, ts },
+              [p2]: { gross: g, net: n, ts },
+            },
+          },
+        };
+      });
+    };
 
     return (
       <Card className="rounded-2xl shadow-sm">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Trophy className="h-4 w-4" /> Saisie du score (jour)
-          </CardTitle>
-          <CardDescription>Saisissez le score brut et net du joueur actif pour une journée.</CardDescription>
+          <CardTitle className="text-base flex items-center gap-2"><Trophy className="h-4 w-4" /> Saisie du score (jour)</CardTitle>
+          <CardDescription>
+            {isTeamDay
+              ? "Jour 2 : Scramble à 2 — choisissez votre partenaire puis saisissez le score d'équipe (brut & net)."
+              : "Saisissez le score brut et net du joueur actif pour une journée."}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {!activePlayer ? (
@@ -573,6 +913,23 @@ export default function GolfCompetitionMiniSite() {
                 </Select>
               </div>
 
+              {isTeamDay ? (
+                <div>
+                  <Label className="text-xs">Partenaire (équipe de 2)</Label>
+                  <Select value={partnerId} onValueChange={setPartnerId}>
+                    <SelectTrigger className="rounded-xl"><SelectValue placeholder="Choisir un partenaire" /></SelectTrigger>
+                    <SelectContent>
+                      {partnerOptions.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.firstName} {p.lastName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="mt-1 text-[11px] text-slate-500">
+                    N'importe lequel des 2 joueurs peut saisir / modifier le score. Il comptera ensuite comme score individuel pour chacun.
+                  </div>
+                </div>
+              ) : null}
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label className="text-xs">Brut</Label>
@@ -584,14 +941,18 @@ export default function GolfCompetitionMiniSite() {
                 </div>
               </div>
 
-              <Button className="w-full rounded-xl" onClick={() => saveScore({ dayId, playerId: activePlayer.id, gross, net })}>
-                <Save className="mr-2 h-4 w-4" /> Enregistrer le score
-              </Button>
+              {isTeamDay ? (
+                <Button className="w-full rounded-xl" disabled={!partnerId} onClick={saveTeamScore}>
+                  <Save className="mr-2 h-4 w-4" /> Enregistrer le score d'équipe
+                </Button>
+              ) : (
+                <Button className="w-full rounded-xl" onClick={() => saveScore({ dayId, playerId: activePlayer.id, gross, net })}>
+                  <Save className="mr-2 h-4 w-4" /> Enregistrer le score
+                </Button>
+              )}
 
               {day && currentScore ? (
-                <div className="text-xs text-slate-500">
-                  Dernière saisie: {new Date(currentScore.ts).toLocaleString()}
-                </div>
+                <div className="text-xs text-slate-500">Dernière saisie: {new Date(currentScore.ts).toLocaleString()}</div>
               ) : null}
             </>
           )}
@@ -623,9 +984,7 @@ export default function GolfCompetitionMiniSite() {
                       <div className="text-xs text-slate-500">Net: <span className="font-semibold tabular-nums">{r.net}</span>{state.settings.showGrossInRanking ? <> • Brut: <span className="font-semibold tabular-nums">{r.gross}</span></> : null}</div>
                     </div>
                   </div>
-                  <Button variant="secondary" className="rounded-xl" onClick={() => { setActive(r.player.id); setTab("scores"); }}>
-                    Modifier
-                  </Button>
+                  <Button variant="secondary" className="rounded-xl" onClick={() => { setActive(r.player.id); setTab("scores"); }}>Modifier</Button>
                 </div>
               ))}
             </div>
@@ -651,9 +1010,7 @@ export default function GolfCompetitionMiniSite() {
                 <div className="text-sm font-semibold">Ajouter un joueur</div>
                 <Badge variant="secondary">Local</Badge>
               </div>
-              <div className="mt-2">
-                <PlayerForm mode="create" />
-              </div>
+              <div className="mt-2"><PlayerForm mode="create" /></div>
             </div>
 
             {state.players.length === 0 ? (
@@ -760,6 +1117,7 @@ export default function GolfCompetitionMiniSite() {
                       <Input className="rounded-xl" value={day.date} onChange={(e) => updateDay(day.id, { date: e.target.value })} />
                     </div>
                   </div>
+
                   <div>
                     <Label className="text-xs">Notes</Label>
                     <Input className="rounded-xl" value={day.notes} onChange={(e) => updateDay(day.id, { notes: e.target.value })} placeholder="ex. Briefing 08:30" />
@@ -776,19 +1134,30 @@ export default function GolfCompetitionMiniSite() {
                           </div>
                           <div className="w-32">
                             <Label className="text-xs">Heure</Label>
-                            <Input className="rounded-xl" value={tt.time} onChange={(e) => {
-                              const v = e.target.value;
-                              setState((s) => ({
-                                ...s,
-                                days: s.days.map((dd) => dd.id !== day.id ? dd : {
-                                  ...dd,
-                                  teeTimes: dd.teeTimes.map((t) => t.id !== tt.id ? t : { ...t, time: v })
-                                })
-                              }));
-                            }} placeholder="HH:mm" />
+                            <Input
+                              className="rounded-xl"
+                              value={tt.time}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setState((s) => ({
+                                  ...s,
+                                  days: s.days.map((dd) =>
+                                    dd.id !== day.id
+                                      ? dd
+                                      : {
+                                          ...dd,
+                                          teeTimes: dd.teeTimes.map((t) => (t.id !== tt.id ? t : { ...t, time: v })),
+                                        }
+                                  ),
+                                }));
+                              }}
+                              placeholder="HH:mm"
+                            />
                           </div>
                         </div>
+
                         <Separator className="my-2" />
+
                         <div className="text-xs text-slate-500 mb-2">Associer des joueurs à ce départ</div>
                         {state.players.length === 0 ? (
                           <div className="text-sm text-slate-600">Créez des joueurs dans l'onglet Joueurs.</div>
@@ -855,10 +1224,8 @@ export default function GolfCompetitionMiniSite() {
 
             <div className="space-y-2">
               <div className="text-sm font-semibold text-rose-700">Zone de réinitialisation</div>
-              <Button variant="destructive" className="w-full rounded-xl" onClick={resetAll}>
-                Réinitialiser toutes les données (local)
-              </Button>
-              <div className="text-[11px] text-slate-500">Les données sont stockées sur l'appareil (localStorage). Pour un usage multi-joueurs en temps réel, il faudra un serveur ou une base (Firebase, Supabase, etc.).</div>
+              <Button variant="destructive" className="w-full rounded-xl" onClick={resetAll}>Réinitialiser toutes les données (local)</Button>
+              <div className="text-[11px] text-slate-500">Les données sont stockées sur l'appareil (localStorage). Pour un usage multi-iPhone en temps réel, il faudra une base en ligne.</div>
             </div>
           </CardContent>
         </Card>
@@ -872,6 +1239,36 @@ export default function GolfCompetitionMiniSite() {
       <DepartClockCard />
       <ScheduleToday />
 
+      <Card className="rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-gradient-to-r from-amber-50 to-white px-4 py-3 ring-1 ring-amber-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[11px] tracking-widest text-slate-500">APERÇU</div>
+              <div className="text-base font-semibold">Top 3 — Général</div>
+            </div>
+            <Button className="rounded-xl" onClick={() => setTab("general")}>Voir le leaderboard</Button>
+          </div>
+        </div>
+        <CardContent className="space-y-2 p-4">
+          {rankingGeneral().slice(0, 3).length === 0 ? (
+            <div className="text-sm text-slate-600">Aucun score saisi pour le moment.</div>
+          ) : (
+            rankingGeneral().slice(0, 3).map((r) => (
+              <div key={r.player.id} className="flex items-center justify-between rounded-2xl px-4 py-3 bg-white ring-1 ring-slate-200">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-semibold tabular-nums">{r.place}</div>
+                  <div>
+                    <div className="text-sm font-semibold">{r.player.firstName} {r.player.lastName}</div>
+                    <div className="text-xs text-slate-500">Net {r.netTotal} • Brut {r.grossTotal}</div>
+                  </div>
+                </div>
+                <Badge variant="secondary">Pro</Badge>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
       <Card className="rounded-2xl shadow-sm">
         <CardHeader>
           <CardTitle className="text-base">Comment ça marche</CardTitle>
@@ -881,7 +1278,7 @@ export default function GolfCompetitionMiniSite() {
           <ol className="list-decimal pl-4 space-y-1">
             <li>Créez votre profil joueur (prénom + nom).</li>
             <li>Dans « Organisation », assignez les joueurs aux départs (tee times).</li>
-            <li>Après la partie, saisissez votre score brut & net dans « Scores ». Le classement quotidien se met à jour automatiquement.</li>
+            <li>Après la partie, saisissez votre score brut & net dans « Scores ». Le classement se met à jour instantanément.</li>
           </ol>
         </CardContent>
       </Card>
@@ -894,10 +1291,11 @@ export default function GolfCompetitionMiniSite() {
       <Card className="rounded-2xl shadow-sm">
         <CardHeader>
           <CardTitle className="text-base">Accès rapide</CardTitle>
-          <CardDescription>Aller au classement ou à l'organisation.</CardDescription>
+          <CardDescription>Aller au classement, au général ou à l'organisation.</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-2">
-          <Button variant="secondary" className="rounded-xl" onClick={() => setTab("classements")}>Classements</Button>
+        <CardContent className="grid grid-cols-3 gap-2">
+          <Button variant="secondary" className="rounded-xl" onClick={() => setTab("classements")}>Jour</Button>
+          <Button variant="secondary" className="rounded-xl" onClick={() => setTab("general")}>Général</Button>
           <Button variant="secondary" className="rounded-xl" onClick={() => setTab("organisation")}>Organisation</Button>
         </CardContent>
       </Card>
@@ -912,41 +1310,36 @@ export default function GolfCompetitionMiniSite() {
     </div>
   );
 
+  const General = () => (
+    <LeaderboardPro />
+  );
+
   return (
     <Shell>
       <Header />
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid grid-cols-5 rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+        <TabsList className="grid grid-cols-6 rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
           <TabsTrigger value="accueil" className="rounded-2xl">Accueil</TabsTrigger>
           <TabsTrigger value="scores" className="rounded-2xl">Scores</TabsTrigger>
           <TabsTrigger value="classements" className="rounded-2xl">Classements</TabsTrigger>
+          <TabsTrigger value="general" className="rounded-2xl">Général</TabsTrigger>
           <TabsTrigger value="joueurs" className="rounded-2xl">Joueurs</TabsTrigger>
           <TabsTrigger value="organisation" className="rounded-2xl">Organisation</TabsTrigger>
         </TabsList>
 
         <div className="mt-4">
-          <TabsContent value="accueil">
-            <Home />
-          </TabsContent>
-          <TabsContent value="scores">
-            <Scores />
-          </TabsContent>
-          <TabsContent value="classements">
-            <Classements />
-          </TabsContent>
-          <TabsContent value="joueurs">
-            <PlayersManager />
-          </TabsContent>
-          <TabsContent value="organisation">
-            <Organization />
-          </TabsContent>
+          <TabsContent value="accueil"><Home /></TabsContent>
+          <TabsContent value="scores"><Scores /></TabsContent>
+          <TabsContent value="classements"><Classements /></TabsContent>
+          <TabsContent value="general"><General /></TabsContent>
+          <TabsContent value="joueurs"><PlayersManager /></TabsContent>
+          <TabsContent value="organisation"><Organization /></TabsContent>
         </div>
       </Tabs>
 
-      <div className="mt-6 text-center text-[11px] text-slate-500">
-        Données locales • Optimisé iPhone • Version 1
-      </div>
+      <div className="mt-6 text-center text-[11px] text-slate-500">Données locales • Optimisé iPhone • Version 3 (Leaderboard Pro)</div>
     </Shell>
   );
 }
+```
