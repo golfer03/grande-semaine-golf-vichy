@@ -2,49 +2,46 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Grande Semaine Golf Vichy</title>
+<title>Grande Semaine Golf</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
-body {
-    font-family: Arial, sans-serif;
-    background: #f4f6f8;
-    margin: 0;
-    padding: 20px;
-}
-
-.container {
-    max-width: 500px;
-    margin: auto;
-}
+body { margin:0; font-family:-apple-system; background:#f2f4f8; }
+.container { max-width:500px; margin:auto; padding:15px; }
 
 .card {
-    background: white;
-    padding: 15px;
-    margin-bottom: 15px;
-    border-radius: 10px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    background:white;
+    padding:15px;
+    margin-bottom:15px;
+    border-radius:12px;
+    box-shadow:0 4px 12px rgba(0,0,0,0.08);
+    transition:0.3s;
 }
 
-h1 {
-    font-size: 20px;
-}
+.alert { background:#d1fae5 !important; border:2px solid #10b981; }
+.soon { background:#fef3c7; padding:5px; border-radius:6px; }
+
+h1 { font-size:20px; }
 
 button {
-    width: 100%;
-    padding: 10px;
-    margin-top: 10px;
-    border: none;
-    border-radius: 8px;
-    background: black;
-    color: white;
-    font-weight: bold;
+    width:100%;
+    padding:12px;
+    border:none;
+    border-radius:10px;
+    background:black;
+    color:white;
+    font-weight:bold;
 }
 
-input {
-    width: 100%;
-    padding: 8px;
-    margin-top: 5px;
+input, select {
+    width:100%;
+    padding:10px;
+    margin-top:5px;
+    margin-bottom:5px;
+    border-radius:8px;
 }
+
+.badge { padding:5px 10px; border-radius:20px; background:#eee; }
 </style>
 </head>
 
@@ -52,88 +49,264 @@ input {
 
 <div class="container">
 
-<h1>🏌️ Grande Semaine de Vichy</h1>
+<h1>🏌️ Grande Semaine Vichy</h1>
 
+<!-- ✅ METEO -->
 <div class="card">
-    <h3>Créer un joueur</h3>
-    <input type="text" id="prenom" placeholder="Prénom">
-    <input type="text" id="nom" placeholder="Nom">
-    <button onclick="ajouterJoueur()">Ajouter</button>
+<h3>🌤️ Météo du jour</h3>
+<div id="meteo">Chargement...</div>
 </div>
 
+<!-- ✅ HORLOGE -->
+<div class="card" id="clockCard">
+<h3>⏰ Horloge</h3>
+<div id="clock"></div>
+<div id="countdown"></div>
+</div>
+
+<!-- ✅ JOUEUR -->
 <div class="card">
-    <h3>Liste des joueurs</h3>
-    <ul id="listeJoueurs"></ul>
+<h3>Créer joueur</h3>
+<input id="prenom">
+<input id="nom">
+<button onclick="addPlayer()">Ajouter</button>
 </div>
 
+<!-- ✅ JOUEUR ACTIF -->
 <div class="card">
-    <h3>Saisie du score</h3>
-    <select id="selectJoueur"></select>
-    <input type="number" id="score" placeholder="Score net">
-    <button onclick="ajouterScore()">Enregistrer</button>
+<h3>👤 Joueur actif</h3>
+<select id="activePlayer"></select>
 </div>
 
+<!-- ✅ PLANNING -->
 <div class="card">
-    <h3>Classement</h3>
-    <ul id="classement"></ul>
+<h3>📅 Planning du jour</h3>
+<ul id="todayPlanning"></ul>
+</div>
+
+<!-- ✅ DEPARTS -->
+<div class="card">
+<h3>Départs</h3>
+<select id="daySelect">
+<option value="0">Jour 1</option>
+<option value="1">Jour 2</option>
+<option value="2">Jour 3</option>
+</select>
+<input id="time" placeholder="09:10">
+<select id="playerSelect"></select>
+<button onclick="assignTeeTime()">Ajouter départ</button>
+<ul id="teeTimes"></ul>
+</div>
+
+<!-- ✅ SCORE -->
+<div class="card">
+<h3>Score</h3>
+<select id="scorePlayer"></select>
+<input type="number" id="score">
+<button onclick="saveScore()">Enregistrer</button>
+</div>
+
+<!-- ✅ CLASSEMENT -->
+<div class="card">
+<h3>Classement</h3>
+<ul id="ranking"></ul>
 </div>
 
 </div>
+
+<!-- ✅ FIREBASE -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 
 <script>
-let joueurs = [];
+const firebaseConfig = {
+  apiKey: "XXX",
+  databaseURL: "XXX"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let players = [];
+let teeTimes = [];
 let scores = [];
+let activePlayerId = null;
 
-function ajouterJoueur() {
-    const prenom = document.getElementById("prenom").value;
-    const nom = document.getElementById("nom").value;
-
-    if (!prenom || !nom) return;
-
-    joueurs.push({ prenom, nom });
-    afficherJoueurs();
-}
-
-function afficherJoueurs() {
-    const liste = document.getElementById("listeJoueurs");
-    const select = document.getElementById("selectJoueur");
-
-    liste.innerHTML = "";
-    select.innerHTML = "";
-
-    joueurs.forEach((j, index) => {
-        liste.innerHTML += `<li>${j.prenom} ${j.nom}</li>`;
-        select.innerHTML += `<option value="${index}">${j.prenom} ${j.nom}</option>`;
+// JOUEURS
+function addPlayer(){
+    db.ref("players").push({
+        prenom: prenom.value,
+        nom: nom.value
     });
 }
 
-function ajouterScore() {
-    const joueurId = document.getElementById("selectJoueur").value;
-    const score = document.getElementById("score").value;
+db.ref("players").on("value", snap=>{
+    players = [];
+    snap.forEach(p=> players.push({...p.val(), id:p.key}));
+    refreshPlayers();
+});
 
-    if (score === "") return;
+function refreshPlayers(){
+    playerSelect.innerHTML="";
+    scorePlayer.innerHTML="";
+    activePlayer.innerHTML="";
 
-    const joueur = joueurs[joueurId];
-
-    scores.push({
-        nom: joueur.prenom + " " + joueur.nom,
-        score: parseInt(score)
-    });
-
-    afficherClassement();
-}
-
-function afficherClassement() {
-    const classement = document.getElementById("classement");
-
-    scores.sort((a, b) => a.score - b.score);
-
-    classement.innerHTML = "";
-
-    scores.forEach((s, index) => {
-        classement.innerHTML += `<li>#${index + 1} - ${s.nom} : ${s.score}</li>`;
+    players.forEach(p=>{
+        playerSelect.innerHTML += `<option value="${p.id}">${p.prenom} ${p.nom}</option>`;
+        scorePlayer.innerHTML += `<option value="${p.id}">${p.prenom} ${p.nom}</option>`;
+        activePlayer.innerHTML += `<option value="${p.id}">${p.prenom} ${p.nom}</option>`;
     });
 }
+
+activePlayer.onchange = ()=> activePlayerId = activePlayer.value;
+
+// DEPARTS
+function assignTeeTime(){
+    db.ref("teeTimes").push({
+        day: daySelect.value,
+        time: time.value,
+        player: playerSelect.value
+    });
+}
+
+db.ref("teeTimes").on("value", snap=>{
+    teeTimes = [];
+    snap.forEach(t=> teeTimes.push(t.val()));
+    displayTeeTimes();
+});
+
+function displayTeeTimes(){
+    teeTimesEl.innerHTML="";
+    teeTimes.forEach(t=>{
+        const p = players.find(x=>x.id===t.player);
+        if(!p) return;
+        teeTimesEl.innerHTML += `<li>Jour ${+t.day+1} - ${t.time} <span class="badge">${p.prenom}</span></li>`;
+    });
+}
+
+// SCORES
+function saveScore(){
+    db.ref("scores").push({
+        player: scorePlayer.value,
+        score: Number(score.value)
+    });
+}
+
+db.ref("scores").on("value", snap=>{
+    scores = [];
+    snap.forEach(s=> scores.push(s.val()));
+    displayRanking();
+});
+
+function displayRanking(){
+    ranking.innerHTML="";
+    scores.sort((a,b)=>a.score-b.score);
+
+    scores.forEach((s,i)=>{
+        const p = players.find(x=>x.id===s.player);
+        if(!p) return;
+        ranking.innerHTML += `<li>#${i+1} ${p.prenom} ${p.nom} → ${s.score}</li>`;
+    });
+}
+
+// ✅ METEO
+function loadMeteo(){
+    const lat = 46.13, lon = 3.42;
+
+    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=precipitation_probability`)
+    .then(r=>r.json())
+    .then(data=>{
+        const temp = data.current_weather.temperature;
+        const pluie = data.hourly.precipitation_probability[new Date().getHours()];
+
+        document.getElementById("meteo").innerHTML =
+        `🌡️ ${temp}°C<br>☔ ${pluie}% pluie`;
+    })
+    .catch(()=> meteo.innerText="Météo indisponible");
+}
+
+// ✅ HORLOGE + LOGIQUE
+function updateClock(){
+    const now = new Date();
+    clock.innerText = now.toLocaleTimeString();
+
+    updatePersonalCountdown(now);
+    displayTodayPlanning(now);
+}
+
+// COMPTE A REBOURS
+function updatePersonalCountdown(now){
+    if(!activePlayerId){
+        countdown.innerText = "Sélectionne un joueur";
+        return;
+    }
+
+    let next = null;
+
+    teeTimes.forEach(t=>{
+        if(t.player !== activePlayerId) return;
+
+        const [h,m] = (t.time||"00:00").split(":");
+        const d = new Date();
+        d.setHours(h,m,0);
+
+        if(d > now && (!next || d < next)) next = d;
+    });
+
+    if(!next){
+        countdown.innerText = "✅ Aucun départ";
+        return;
+    }
+
+    const diff = next - now;
+    const min = Math.floor(diff/60000);
+    const sec = Math.floor((diff%60000)/1000);
+
+    countdown.innerText = `👤 ${min}m ${sec}s`;
+
+    if(diff < 600000){
+        clockCard.classList.add("alert");
+
+        if(!window.alertPlayed){
+            window.alertPlayed=true;
+
+            if(navigator.vibrate) navigator.vibrate([200,100,200]);
+            new Audio("https://www.soundjay.com/buttons/beep-07.wav").play();
+        }
+
+    } else {
+        clockCard.classList.remove("alert");
+        window.alertPlayed=false;
+    }
+}
+
+// PLANNING
+function displayTodayPlanning(now){
+    todayPlanning.innerHTML="";
+
+    teeTimes.forEach(t=>{
+        const p = players.find(x=>x.id===t.player);
+        if(!p) return;
+
+        const [h,m] = (t.time||"00:00").split(":");
+        const d = new Date();
+        d.setHours(h,m,0);
+
+        let cls="";
+        if(d-now<600000 && d>now) cls="soon";
+
+        todayPlanning.innerHTML += `<li class="${cls}">
+        ${t.time} - ${p.prenom}
+        </li>`;
+    });
+}
+
+// LANCEMENT
+setInterval(updateClock,1000);
+setInterval(loadMeteo,3600000);
+
+updateClock();
+loadMeteo();
+
 </script>
 
 </body>
