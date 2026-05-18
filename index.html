@@ -1,248 +1,244 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tournoi Golf Vichy</title>
+
+<style>
+body {font-family:-apple-system;background:#f2f4f8;margin:0;padding:15px;}
+.card{background:white;padding:15px;margin-bottom:10px;border-radius:12px;}
+button{width:100%;padding:10px;margin-top:5px;background:black;color:white;border:none;}
+.alert{background:#d1fae5;}
+.soon{background:#fef3c7;}
+</style>
+</head>
+
+<body>
+
+<h2>🏆 Tournoi Golf</h2>
+
+<div class="card">
+<h3>🌤 Météo</h3>
+<div id="meteo"></div>
+</div>
+
+<div class="card" id="clockCard">
+<h3>⏰ Horloge</h3>
+<div id="clock"></div>
+<div id="countdown"></div>
+</div>
+
+<div class="card">
+<h3>👤 Joueur</h3>
+<select id="playerSelect"></select>
+</div>
+
+<div class="card">
+<h3>⛳ Ajouter départ</h3>
+<select id="day">
+<option>Jour 1</option>
+<option>Jour 2</option>
+<option>Jour 3</option>
+</select>
+<input id="time" placeholder="09:10">
+<button id="btnAddTee">Ajouter départ</button>
+</div>
+
+<div class="card">
+<h3>📅 Planning</h3>
+<ul id="planning"></ul>
+</div>
+
+<div class="card">
+<h3>🎯 Score</h3>
+<select id="dayScore">
+<option>Jour 1</option>
+<option>Jour 2</option>
+<option>Jour 3</option>
+</select>
+<input id="score" type="number">
+<button id="btnAddScore">Valider</button>
+</div>
+
+<div class="card">
+<h3>🏆 Classement</h3>
+<ul id="ranking"></ul>
+</div>
+
 <script>
 
-// --- DOM ---
-const el = id => document.getElementById(id);
+// DOM
+const el=id=>document.getElementById(id);
 
-const playerSelect = el("playerSelect");
-const planning = el("planning");
-const rankingDay = el("rankingDay");
-const rankingTotal = el("rankingTotal");
-const clock = el("clock");
-const countdown = el("countdown");
-const clockCard = el("clockCard");
-const meteo = el("meteo");
+const playerSelect=el("playerSelect");
+const planning=el("planning");
+const ranking=el("ranking");
+const clock=el("clock");
+const countdown=el("countdown");
+const clockCard=el("clockCard");
+const meteo=el("meteo");
 
-const prenom = el("prenom");
-const pseudo = el("pseudo");
-const indexInput = el("index");
-const heure = el("heure");
-const jour = el("jour");
-const jourScore = el("jourScore");
-const score = el("score");
+const time=el("time");
+const day=el("day");
+const dayScore=el("dayScore");
+const score=el("score");
 
-// --- DATA ---
-let players = JSON.parse(localStorage.players || "[]");
-let tees = JSON.parse(localStorage.tees || "[]");
-let scores = JSON.parse(localStorage.scores || "{}");
+// DATA
+let players=JSON.parse(localStorage.players||"[]");
+let tees=JSON.parse(localStorage.tees||"[]");
+let scores=JSON.parse(localStorage.scores||"{}");
 
-let activeId = null;
+let activeId=null;
 
-// ✅ COMPÉTITION
-const competitions = {
-  "Jour 1":"Lundi 3 août 2026 - YNOVIT (Simple)",
-  "Jour 2":"Mardi 4 août 2026 - LA MONTAGNE (Scramble)",
-  "Jour 3":"Mercredi 5 août 2026 - PARTOUCHE (Simple)"
-};
-
-// INIT joueurs
-if(players.length === 0){
-    players = [
-        {id:1, prenom:"Louis", pseudo:"Luigi di Vichy", index:12},
-        {id:2, prenom:"Yoyo", pseudo:"La Scalopina", index:10},
-        {id:3, prenom:"Guigui", pseudo:"Comono", index:15},
-        {id:4, prenom:"Marie", pseudo:"Pankake", index:18}
-    ];
-    save();
+// INIT joueurs (fix)
+if(players.length===0){
+players=[
+{id:1,prenom:"Louis",pseudo:"Luigi",index:12},
+{id:2,prenom:"Yoyo",pseudo:"Scalopina",index:10},
+{id:3,prenom:"Guigui",pseudo:"Comono",index:15},
+{id:4,prenom:"Marie",pseudo:"Pankake",index:18}
+];
+save();
 }
 
 // SAVE
 function save(){
-    localStorage.players = JSON.stringify(players);
-    localStorage.tees = JSON.stringify(tees);
-    localStorage.scores = JSON.stringify(scores);
+localStorage.players=JSON.stringify(players);
+localStorage.tees=JSON.stringify(tees);
+localStorage.scores=JSON.stringify(scores);
 }
 
-// ✅ JOUEURS
+// JOUEURS
 function renderPlayers(){
-    playerSelect.innerHTML = "";
-
-    players.forEach(p=>{
-        playerSelect.innerHTML += `
-        <option value="${p.id}">
-        ${p.prenom} (${p.pseudo}) - HCP ${p.index}
-        </option>`;
-    });
-
-    activeId = players[0].id;
-    playerSelect.value = activeId;
+playerSelect.innerHTML="";
+players.forEach(p=>{
+playerSelect.innerHTML+=`<option value="${p.id}">
+${p.prenom} (${p.pseudo})
+</option>`;
+});
+activeId=players[0].id;
+playerSelect.value=activeId;
 }
+playerSelect.onchange=()=>activeId=Number(playerSelect.value);
 
-playerSelect.onchange = () => activeId = Number(playerSelect.value);
+// DEPART
+document.getElementById("btnAddTee").onclick=()=>{
+if(!time.value.includes(":")) return alert("Heure format 09:10");
 
-// ✅ AJOUT JOUEUR
-el("btnAddPlayer").onclick = () => {
-    if(!prenom.value || !pseudo.value || !indexInput.value) return;
+tees=tees.filter(t=>!(t.player===activeId && t.day===day.value));
 
-    players.push({
-        id: Date.now(),
-        prenom: prenom.value,
-        pseudo: pseudo.value,
-        index: Number(indexInput.value)
-    });
+tees.push({
+day:day.value,
+time:time.value,
+player:activeId
+});
 
-    prenom.value="";
-    pseudo.value="";
-    indexInput.value="";
-
-    save();
-    renderPlayers();
+time.value="";
+save();
+renderPlanning();
 };
 
-// ✅ AJOUT DEPART (corrigé)
-el("btnAddTee").onclick = () => {
-
-    if(!heure.value || !heure.value.includes(":")) {
-        alert("Format heure 09:10");
-        return;
-    }
-
-    // 1 départ / joueur / jour
-    tees = tees.filter(t => !(t.player === activeId && t.jour === jour.value));
-
-    tees.push({
-        jour: jour.value,
-        heure: heure.value,
-        player: activeId
-    });
-
-    heure.value="";
-    save();
-    renderPlanning();
-};
-
-// ✅ PLANNING PAR JOUR (clair)
+// PLANNING
 function renderPlanning(){
+planning.innerHTML="";
+tees.sort((a,b)=>a.time.localeCompare(b.time));
 
-    planning.innerHTML="";
+tees.forEach(t=>{
+let p=players.find(x=>x.id===t.player);
+if(!p) return;
 
-    Object.keys(competitions).forEach(jourKey=>{
-
-        planning.innerHTML += `<li><b>${competitions[jourKey]}</b></li>`;
-
-        let list = tees
-        .filter(t=>t.jour === jourKey)
-        .sort((a,b)=>a.heure.localeCompare(b.heure));
-
-        list.forEach(t=>{
-            let p = players.find(x=>x.id===t.player);
-
-            planning.innerHTML += `
-            <li>
-            ${t.heure} - ${p.prenom}
-            </li>`;
-        });
-
-    });
+planning.innerHTML+=`
+<li>${t.day} ${t.time} - ${p.prenom}</li>`;
+});
 }
 
-// ✅ SCORE
-el("btnAddScore").onclick = () => {
+// SCORE
+document.getElementById("btnAddScore").onclick=()=>{
+let p=players.find(x=>x.id==activeId);
+if(!p||!score.value) return;
 
-    let p = players.find(x=>x.id==playerSelect.value);
-    if(!p || !score.value) return;
+let brut=Number(score.value);
+let net=brut-p.index;
 
-    let brut = Number(score.value);
-    let net = brut - p.index;
+if(!scores[dayScore.value]) scores[dayScore.value]={};
 
-    if(!scores[jourScore.value]) scores[jourScore.value]={};
+scores[dayScore.value][p.id]={brut,net};
 
-    scores[jourScore.value][p.id]={brut, net};
-
-    score.value="";
-    save();
-    renderRanking();
+score.value="";
+save();
+renderRanking();
 };
 
-// ✅ CLASSEMENT
+// CLASSEMENT
 function renderRanking(){
 
-    // JOUR
-    rankingDay.innerHTML="";
-    let dayScores = scores[jourScore.value] || {};
+let total={};
 
-    let list = Object.entries(dayScores).map(([id,v])=>{
-        let p = players.find(x=>x.id==id);
-        return {nom:p.prenom,net:v.net};
-    });
+Object.values(scores).forEach(day=>{
+Object.entries(day).forEach(([id,v])=>{
+if(!total[id]) total[id]={net:0};
+total[id].net+=v.net;
+});
+});
 
-    list.sort((a,b)=>a.net-b.net);
+ranking.innerHTML="";
 
-    list.forEach((l,i)=>{
-        rankingDay.innerHTML += `<li>#${i+1} ${l.nom} ${l.net}</li>`;
-    });
+let list=Object.entries(total).map(([id,v])=>{
+let p=players.find(x=>x.id==id);
+return {nom:p.prenom,net:v.net};
+});
 
-    // GLOBAL
-    let total = {};
+list.sort((a,b)=>a.net-b.net);
 
-    Object.values(scores).forEach(day=>{
-        Object.entries(day).forEach(([id,v])=>{
-            if(!total[id]) total[id]={net:0};
-            total[id].net += v.net;
-        });
-    });
-
-    rankingTotal.innerHTML="";
-
-    let final = Object.entries(total).map(([id,v])=>{
-        let p=players.find(x=>x.id==id);
-        return {nom:p.prenom,net:v.net};
-    });
-
-    final.sort((a,b)=>a.net-b.net);
-
-    final.forEach((f,i)=>{
-        rankingTotal.innerHTML += `
-        <li>🥇 #${i+1} ${f.nom} ${f.net.toFixed(1)}</li>`;
-    });
+list.forEach((l,i)=>{
+ranking.innerHTML+=`<li>#${i+1} ${l.nom} ${l.net.toFixed(1)}</li>`;
+});
 }
 
-// ✅ COUNTDOWN CORRIGÉ (PERSONNEL)
+// HORLOGE
 function updateClock(){
+let now=new Date();
+clock.innerText=now.toLocaleTimeString();
 
-    const now = new Date();
-    clock.innerText = now.toLocaleTimeString();
+let next=null;
 
-    let next = null;
+tees.forEach(t=>{
+if(t.player!==activeId) return;
 
-    tees.forEach(t=>{
-        if(t.player !== activeId) return;
+let [h,m]=t.time.split(":");
+let d=new Date();
+d.setHours(h,m,0);
 
-        const [h,m]=t.heure.split(":");
-        let d = new Date();
-        d.setHours(h,m,0);
+if(d>now&&(!next||d<next)) next=d;
+});
 
-        if(d>now && (!next || d<next)) next = d;
-    });
-
-    if(!next){
-        countdown.innerText="Aucun départ";
-        return;
-    }
-
-    const diff = next-now;
-    const min = Math.floor(diff/60000);
-    const sec = Math.floor((diff%60000)/1000);
-
-    countdown.innerText = `Départ dans ${min}m ${sec}s`;
-
-    if(diff < 600000){
-        clockCard.classList.add("alert");
-    } else {
-        clockCard.classList.remove("alert");
-    }
+if(!next){
+countdown.innerText="Aucun départ";
+return;
 }
 
-// ✅ METEO FIX % PLUIE
+let diff=next-now;
+let min=Math.floor(diff/60000);
+let sec=Math.floor((diff%60000)/1000);
+
+countdown.innerText=`Départ dans ${min}m ${sec}s`;
+
+if(diff<600000){
+clockCard.classList.add("alert");
+}else{
+clockCard.classList.remove("alert");
+}
+}
+
+// METEO
 function loadMeteo(){
 fetch("https://api.open-meteo.com/v1/forecast?latitude=46.12&longitude=3.40&current_weather=true&hourly=precipitation_probability")
 .then(r=>r.json())
 .then(d=>{
-    const temp = d.current_weather.temperature;
-    const pluie = d.hourly.precipitation_probability[0]; // ✅ fix
-
-    meteo.innerText = `${temp}°C | ☔ ${pluie}%`;
-})
-.catch(()=> meteo.innerText="indispo");
+const pluie=d.hourly.precipitation_probability[0];
+meteo.innerText=`${d.current_weather.temperature}°C | ☔ ${pluie}%`;
+});
 }
 
 // INIT
@@ -254,3 +250,6 @@ loadMeteo();
 setInterval(updateClock,1000);
 
 </script>
+
+</body>
+</html>
