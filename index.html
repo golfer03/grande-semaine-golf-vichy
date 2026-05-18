@@ -1,11 +1,95 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tournoi Golf</title>
+
+<style>
+body {font-family:-apple-system;background:#f2f4f8;margin:0;padding:15px;}
+.card{background:white;padding:15px;margin-bottom:12px;border-radius:12px;}
+.alert{background:#d1fae5;}
+.soon{background:#fef3c7;}
+button{width:100%;padding:12px;margin-top:8px;background:black;color:white;border:none;}
+input,select{width:100%;padding:10px;margin-top:5px;}
+</style>
+</head>
+
+<body>
+
+<h2>🏆 Tournoi Golf - Vichy</h2>
+
+<div class="card">
+<h3>🌤 Météo</h3>
+<div id="meteo">...</div>
+</div>
+
+<div class="card" id="clockCard">
+<h3>⏰ Horloge</h3>
+<div id="clock"></div>
+<div id="countdown"></div>
+</div>
+
+<div class="card">
+<h3>👤 Joueur actif</h3>
+<select id="playerSelect"></select>
+</div>
+
+<div class="card">
+<h3>➕ Ajouter joueur</h3>
+<input id="prenom">
+<input id="pseudo">
+<input id="index" type="number">
+<button id="btnAddPlayer">Ajouter</button>
+</div>
+
+<div class="card">
+<h3>⛳ Ajouter départ</h3>
+<select id="jour">
+<option>Jour 1</option>
+<option>Jour 2</option>
+<option>Jour 3</option>
+</select>
+<input id="heure">
+<button id="btnAddTee">Ajouter</button>
+</div>
+
+<div class="card">
+<h3>📅 Planning</h3>
+<ul id="planning"></ul>
+</div>
+
+<div class="card">
+<h3>🎯 Score</h3>
+<select id="jourScore">
+<option>Jour 1</option>
+<option>Jour 2</option>
+<option>Jour 3</option>
+</select>
+<input id="score">
+<button id="btnAddScore">Valider</button>
+</div>
+
+<div class="card">
+<h3>🏆 Classement Jour</h3>
+<ul id="rankingDay"></ul>
+</div>
+
+<div class="card">
+<h3>🏆 Classement Général</h3>
+<ul id="rankingTotal"></ul>
+<button onclick="resetAll()">Reset</button>
+</div>
+
 <script>
 
-// ✅ DOM SAFE
+// SAFE DOM
 const el = id => document.getElementById(id);
 
-const activePlayer = el("activePlayer");
+const playerSelect = el("playerSelect");
 const planning = el("planning");
-const ranking = el("ranking");
+const rankingDay = el("rankingDay");
+const rankingTotal = el("rankingTotal");
 const clock = el("clock");
 const countdown = el("countdown");
 const clockCard = el("clockCard");
@@ -14,58 +98,55 @@ const meteo = el("meteo");
 const prenom = el("prenom");
 const pseudo = el("pseudo");
 const indexInput = el("index");
-const timeInput = el("time");
-const scoreInput = el("scoreInput");
-const day = el("day");
+const heure = el("heure");
+const jour = el("jour");
+const jourScore = el("jourScore");
+const score = el("score");
 
 // DATA
 let players = JSON.parse(localStorage.players || "[]");
-let teeTimes = JSON.parse(localStorage.teeTimes || "[]");
+let tees = JSON.parse(localStorage.tees || "[]");
 let scores = JSON.parse(localStorage.scores || "{}");
 
-let activePlayerId = null;
+let activeId = null;
+
+// INIT JOUEURS
+if(players.length === 0){
+    players = [
+        {id:1,prenom:"Louis",pseudo:"Luigi",index:12},
+        {id:2,prenom:"Yoyo",pseudo:"Scalopina",index:10},
+        {id:3,prenom:"Guigui",pseudo:"Comono",index:15},
+        {id:4,prenom:"Marie",pseudo:"Pankake",index:18}
+    ];
+    save();
+}
 
 // SAVE
 function save(){
     localStorage.players = JSON.stringify(players);
-    localStorage.teeTimes = JSON.stringify(teeTimes);
+    localStorage.tees = JSON.stringify(tees);
     localStorage.scores = JSON.stringify(scores);
 }
 
 // JOUEURS
 function renderPlayers(){
-
-    if(players.length === 0){
-        players = [
-            {id:1, prenom:"Louis", pseudo:"Luigi di Vichy", index:12},
-            {id:2, prenom:"Yoyo", pseudo:"La Scalopina di Milano", index:10},
-            {id:3, prenom:"Guigui", pseudo:"Comono", index:15},
-            {id:4, prenom:"Marie", pseudo:"La Reine du Pankake", index:18}
-        ];
-        save();
-    }
-
-    activePlayer.innerHTML="";
+    playerSelect.innerHTML = "";
 
     players.forEach(p=>{
-        activePlayer.innerHTML += `
+        playerSelect.innerHTML += `
         <option value="${p.id}">
-        ${p.prenom} (${p.pseudo}) - HCP ${p.index}
+        ${p.prenom} (${p.pseudo}) - ${p.index}
         </option>`;
     });
 
-    // ✅ sync correct
-    activePlayer.value = players[0].id;
-    activePlayerId = players[0].id;
+    activeId = players[0].id;
+    playerSelect.value = activeId;
 }
 
-activePlayer.onchange = () => {
-    activePlayerId = Number(activePlayer.value);
-};
+playerSelect.onchange=()=>activeId=Number(playerSelect.value);
 
-// AJOUT JOUEUR
-function addPlayer(){
-    if(!prenom.value || !pseudo.value || !indexInput.value) return;
+el("btnAddPlayer").onclick = () => {
+    if(!prenom.value||!pseudo.value||!indexInput.value) return;
 
     players.push({
         id: Date.now(),
@@ -77,164 +158,134 @@ function addPlayer(){
     prenom.value="";
     pseudo.value="";
     indexInput.value="";
-
     save();
     renderPlayers();
-}
+};
 
 // DEPARTS
-function addTee(){
-    if(!timeInput.value || !activePlayerId) return;
+el("btnAddTee").onclick = () => {
+    if(!heure.value || !activeId) return;
 
-    teeTimes.push({
-        day: day.value,
-        time: timeInput.value,
-        player: activePlayerId
+    tees.push({
+        jour: jour.value,
+        heure: heure.value,
+        player: activeId
     });
 
-    timeInput.value="";
+    heure.value="";
     save();
     renderPlanning();
-}
+};
 
 // PLANNING
 function renderPlanning(){
-
     planning.innerHTML="";
-    const now = new Date();
 
-    teeTimes
-    .filter(t => t.time)
-    .sort((a,b)=>a.time.localeCompare(b.time))
+    tees
+    .filter(t=>t.heure)
+    .sort((a,b)=>a.heure.localeCompare(b.heure))
     .forEach(t=>{
-
-        const p = players.find(x=>x.id === t.player);
+        let p = players.find(x=>x.id===t.player);
         if(!p) return;
 
-        const [h,m] = t.time.split(":");
-
-        const d = new Date();
-        d.setHours(h,m,0);
-
-        let cls="";
-        if(d-now < 600000 && d>now) cls="soon";
-
         planning.innerHTML += `
-        <li class="${cls}">
-        ${t.day} - ${t.time} - <b>${p.prenom} (${p.pseudo})</b>
-        </li>`;
+        <li>${t.jour} ${t.heure} - ${p.prenom}</li>`;
     });
 }
 
-// SCORES
-function addScore(){
+// SCORE
+el("btnAddScore").onclick = () => {
 
-    if(!scoreInput.value || !activePlayerId) return;
+    let p = players.find(x=>x.id==playerSelect.value);
+    if(!p || !score.value) return;
 
-    let player = players.find(p=>p.id===activePlayerId);
+    let brut = Number(score.value);
+    let net = brut - p.index;
 
-    let brut = Number(scoreInput.value);
-    let net = brut - player.index;
+    if(!scores[jourScore.value]) scores[jourScore.value]={};
 
-    if(!scores[activePlayerId]){
-        scores[activePlayerId] = {totalBrut:0, totalNet:0};
-    }
+    scores[jourScore.value][p.id]={brut,net};
 
-    scores[activePlayerId].totalBrut += brut;
-    scores[activePlayerId].totalNet += net;
-
-    scoreInput.value="";
+    score.value="";
     save();
     renderRanking();
-}
+};
 
 // CLASSEMENT
 function renderRanking(){
 
-    ranking.innerHTML="";
+    // JOUR
+    rankingDay.innerHTML="";
+    let sc = scores[jourScore.value] || {};
 
-    let classement = players.map(p => {
-
-        let sc = scores[p.id] || {totalBrut:0, totalNet:0};
-
-        return {
-            prenom:p.prenom,
-            pseudo:p.pseudo,
-            brut:sc.totalBrut,
-            net:sc.totalNet
-        };
+    let list = Object.entries(sc).map(([id,v])=>{
+        let p = players.find(x=>x.id==id);
+        return {nom:p.prenom,net:v.net,brut:v.brut};
     });
 
-    classement.sort((a,b)=>a.net-b.net);
+    list.sort((a,b)=>a.net-b.net);
 
-    classement.forEach((c,i)=>{
-        ranking.innerHTML += `
-        <li>
-        #${i+1} <b>${c.prenom} (${c.pseudo})</b><br>
-        Net: <b>${c.net.toFixed(1)}</b> | Brut: ${c.brut}
-        </li>`;
+    list.forEach((l,i)=>{
+        rankingDay.innerHTML += `<li>#${i+1} ${l.nom} ${l.net}</li>`;
+    });
+
+    // TOTAL
+    let total = {};
+
+    Object.values(scores).forEach(day=>{
+        Object.entries(day).forEach(([id,v])=>{
+            if(!total[id]) total[id]={net:0,brut:0};
+            total[id].net+=v.net;
+            total[id].brut+=v.brut;
+        });
+    });
+
+    rankingTotal.innerHTML="";
+    let final = Object.entries(total).map(([id,v])=>{
+        let p=players.find(x=>x.id==id);
+        return {nom:p.prenom,...v};
+    });
+
+    final.sort((a,b)=>a.net-b.net);
+
+    final.forEach((f,i)=>{
+        rankingTotal.innerHTML +=
+        `<li>#${i+1} ${f.nom} ${f.net.toFixed(1)}</li>`;
     });
 }
 
 // HORLOGE
 function updateClock(){
-
-    const now = new Date();
-    clock.innerText = now.toLocaleTimeString();
-
-    let next=null;
-
-    teeTimes.forEach(t=>{
-        if(t.player !== activePlayerId || !t.time) return;
-
-        const [h,m]=t.time.split(":");
-
-        const d=new Date();
-        d.setHours(h,m,0);
-
-        if(d>now && (!next || d<next)) next=d;
-    });
-
-    if(!next){
-        countdown.innerText="Aucun départ";
-        return;
-    }
-
-    const diff = next-now;
-    const min = Math.floor(diff/60000);
-
-    countdown.innerText="Départ dans "+min+" min";
-
-    if(diff<600000){
-        clockCard.classList.add("alert");
-    } else {
-        clockCard.classList.remove("alert");
-    }
+    let now=new Date();
+    clock.innerText=now.toLocaleTimeString();
 }
 
 // METEO
 function loadMeteo(){
-
 fetch("https://api.open-meteo.com/v1/forecast?latitude=46.12&longitude=3.40&current_weather=true&hourly=precipitation_probability")
 .then(r=>r.json())
-.then(data=>{
-    const t=data.current_weather.temperature;
-    const pluie=data.hourly.precipitation_probability[new Date().getHours()];
-    meteo.innerText = `${t}°C - pluie ${pluie}%`;
+.then(d=>{
+    meteo.innerText = d.current_weather.temperature+"°C";
 })
-.catch(()=> meteo.innerText="Météo indisponible");
+.catch(()=>meteo.innerText="indispo");
+}
+
+// RESET
+function resetAll(){
+    localStorage.clear();
+    location.reload();
 }
 
 // INIT
-setInterval(updateClock,1000);
-setInterval(loadMeteo,3600000);
-
 renderPlayers();
 renderPlanning();
 renderRanking();
-
-updateClock();
 loadMeteo();
 
+setInterval(updateClock,1000);
+
 </script>
+
+</body>
+</html>
 ``
