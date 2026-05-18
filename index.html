@@ -1,37 +1,240 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Grande Semaine Vichy</title>
+<script>
 
-<style>
-body { font-family:-apple-system; background:#f2f4f8; margin:0; padding:15px; }
-h2 { margin-bottom:10px; }
+// ✅ DOM SAFE
+const el = id => document.getElementById(id);
 
-.card {
-    background:white;
-    padding:15px;
-    margin-bottom:12px;
-    border-radius:12px;
-    box-shadow:0 4px 12px rgba(0,0,0,0.08);
+const activePlayer = el("activePlayer");
+const planning = el("planning");
+const ranking = el("ranking");
+const clock = el("clock");
+const countdown = el("countdown");
+const clockCard = el("clockCard");
+const meteo = el("meteo");
+
+const prenom = el("prenom");
+const pseudo = el("pseudo");
+const indexInput = el("index");
+const timeInput = el("time");
+const scoreInput = el("scoreInput");
+const day = el("day");
+
+// DATA
+let players = JSON.parse(localStorage.players || "[]");
+let teeTimes = JSON.parse(localStorage.teeTimes || "[]");
+let scores = JSON.parse(localStorage.scores || "{}");
+
+let activePlayerId = null;
+
+// SAVE
+function save(){
+    localStorage.players = JSON.stringify(players);
+    localStorage.teeTimes = JSON.stringify(teeTimes);
+    localStorage.scores = JSON.stringify(scores);
 }
 
-.alert { background:#d1fae5; }
-.soon { background:#fef3c7; }
+// JOUEURS
+function renderPlayers(){
 
-input, select {
-    width:100%;
-    padding:10px;
-    margin-top:5px;
-    border-radius:8px;
+    if(players.length === 0){
+        players = [
+            {id:1, prenom:"Louis", pseudo:"Luigi di Vichy", index:12},
+            {id:2, prenom:"Yoyo", pseudo:"La Scalopina di Milano", index:10},
+            {id:3, prenom:"Guigui", pseudo:"Comono", index:15},
+            {id:4, prenom:"Marie", pseudo:"La Reine du Pankake", index:18}
+        ];
+        save();
+    }
+
+    activePlayer.innerHTML="";
+
+    players.forEach(p=>{
+        activePlayer.innerHTML += `
+        <option value="${p.id}">
+        ${p.prenom} (${p.pseudo}) - HCP ${p.index}
+        </option>`;
+    });
+
+    // ✅ sync correct
+    activePlayer.value = players[0].id;
+    activePlayerId = players[0].id;
 }
 
-button {
-    width:100%;
-    padding:12px;
-    margin-top:8px;
-    border:none;
-    border-radius:10px;
-    background:black;
-    color:white;
+activePlayer.onchange = () => {
+    activePlayerId = Number(activePlayer.value);
+};
+
+// AJOUT JOUEUR
+function addPlayer(){
+    if(!prenom.value || !pseudo.value || !indexInput.value) return;
+
+    players.push({
+        id: Date.now(),
+        prenom: prenom.value,
+        pseudo: pseudo.value,
+        index: Number(indexInput.value)
+    });
+
+    prenom.value="";
+    pseudo.value="";
+    indexInput.value="";
+
+    save();
+    renderPlayers();
+}
+
+// DEPARTS
+function addTee(){
+    if(!timeInput.value || !activePlayerId) return;
+
+    teeTimes.push({
+        day: day.value,
+        time: timeInput.value,
+        player: activePlayerId
+    });
+
+    timeInput.value="";
+    save();
+    renderPlanning();
+}
+
+// PLANNING
+function renderPlanning(){
+
+    planning.innerHTML="";
+    const now = new Date();
+
+    teeTimes
+    .filter(t => t.time)
+    .sort((a,b)=>a.time.localeCompare(b.time))
+    .forEach(t=>{
+
+        const p = players.find(x=>x.id === t.player);
+        if(!p) return;
+
+        const [h,m] = t.time.split(":");
+
+        const d = new Date();
+        d.setHours(h,m,0);
+
+        let cls="";
+        if(d-now < 600000 && d>now) cls="soon";
+
+        planning.innerHTML += `
+        <li class="${cls}">
+        ${t.day} - ${t.time} - <b>${p.prenom} (${p.pseudo})</b>
+        </li>`;
+    });
+}
+
+// SCORES
+function addScore(){
+
+    if(!scoreInput.value || !activePlayerId) return;
+
+    let player = players.find(p=>p.id===activePlayerId);
+
+    let brut = Number(scoreInput.value);
+    let net = brut - player.index;
+
+    if(!scores[activePlayerId]){
+        scores[activePlayerId] = {totalBrut:0, totalNet:0};
+    }
+
+    scores[activePlayerId].totalBrut += brut;
+    scores[activePlayerId].totalNet += net;
+
+    scoreInput.value="";
+    save();
+    renderRanking();
+}
+
+// CLASSEMENT
+function renderRanking(){
+
+    ranking.innerHTML="";
+
+    let classement = players.map(p => {
+
+        let sc = scores[p.id] || {totalBrut:0, totalNet:0};
+
+        return {
+            prenom:p.prenom,
+            pseudo:p.pseudo,
+            brut:sc.totalBrut,
+            net:sc.totalNet
+        };
+    });
+
+    classement.sort((a,b)=>a.net-b.net);
+
+    classement.forEach((c,i)=>{
+        ranking.innerHTML += `
+        <li>
+        #${i+1} <b>${c.prenom} (${c.pseudo})</b><br>
+        Net: <b>${c.net.toFixed(1)}</b> | Brut: ${c.brut}
+        </li>`;
+    });
+}
+
+// HORLOGE
+function updateClock(){
+
+    const now = new Date();
+    clock.innerText = now.toLocaleTimeString();
+
+    let next=null;
+
+    teeTimes.forEach(t=>{
+        if(t.player !== activePlayerId || !t.time) return;
+
+        const [h,m]=t.time.split(":");
+
+        const d=new Date();
+        d.setHours(h,m,0);
+
+        if(d>now && (!next || d<next)) next=d;
+    });
+
+    if(!next){
+        countdown.innerText="Aucun départ";
+        return;
+    }
+
+    const diff = next-now;
+    const min = Math.floor(diff/60000);
+
+    countdown.innerText="Départ dans "+min+" min";
+
+    if(diff<600000){
+        clockCard.classList.add("alert");
+    } else {
+        clockCard.classList.remove("alert");
+    }
+}
+
+// METEO
+function loadMeteo(){
+
+fetch("https://api.open-meteo.com/v1/forecast?latitude=46.12&longitude=3.40&current_weather=true&hourly=precipitation_probability")
+.then(r=>r.json())
+.then(data=>{
+    const t=data.current_weather.temperature;
+    const pluie=data.hourly.precipitation_probability[new Date().getHours()];
+    meteo.innerText = `${t}°C - pluie ${pluie}%`;
+})
+.catch(()=> meteo.innerText="Météo indisponible");
+}
+
+// INIT
+setInterval(updateClock,1000);
+setInterval(loadMeteo,3600000);
+
+renderPlayers();
+renderPlanning();
+renderRanking();
+
+updateClock();
+loadMeteo();
+
+</script>
+``
