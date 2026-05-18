@@ -2,193 +2,36 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Grande Semaine Golf</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grande Semaine Vichy</title>
 
 <style>
-body { font-family:Arial; background:#f2f4f8; margin:0; padding:15px;}
-.card { background:white; padding:15px; margin-bottom:10px; border-radius:10px;}
+body { font-family:-apple-system; background:#f2f4f8; margin:0; padding:15px; }
+h2 { margin-bottom:10px; }
+
+.card {
+    background:white;
+    padding:15px;
+    margin-bottom:12px;
+    border-radius:12px;
+    box-shadow:0 4px 12px rgba(0,0,0,0.08);
+}
+
 .alert { background:#d1fae5; }
 .soon { background:#fef3c7; }
-button { width:100%; padding:10px; margin-top:5px;}
-</style>
-</head>
 
-<body>
-
-<h2>🏌️ Grande Semaine Vichy</h2>
-
-<div class="card">
-<h3>🌤 Météo Bellerive</h3>
-<div id="meteo"></div>
-</div>
-
-<div class="card" id="clockCard">
-<h3>⏰ Horloge</h3>
-<div id="clock"></div>
-<div id="countdown"></div>
-</div>
-
-<div class="card">
-<h3>Créer joueur</h3>
-<input id="prenom">
-<input id="nom">
-<button onclick="addPlayer()">Ajouter</button>
-</div>
-
-<div class="card">
-<h3>👤 Joueur actif</h3>
-<select id="activePlayer"></select>
-</div>
-
-<div class="card">
-<h3>📅 Planning</h3>
-<ul id="planning"></ul>
-</div>
-
-<div class="card">
-<h3>Ajouter départ</h3>
-<input id="time" placeholder="09:10">
-<button onclick="addTee()">Ajouter</button>
-</div>
-
-<script>
-
-// ---- DATA LOCAL ----
-let players = JSON.parse(localStorage.players || "[]");
-let teeTimes = JSON.parse(localStorage.teeTimes || "[]");
-
-let activePlayerId = null;
-
-// ---- SAVE ----
-function save(){
-    localStorage.players = JSON.stringify(players);
-    localStorage.teeTimes = JSON.stringify(teeTimes);
+input, select {
+    width:100%;
+    padding:10px;
+    margin-top:5px;
+    border-radius:8px;
 }
 
-// ---- JOUEURS ----
-function addPlayer(){
-    if(!prenom.value || !nom.value) return;
-
-    players.push({
-        id:Date.now(),
-        prenom:prenom.value,
-        nom:nom.value
-    });
-
-    prenom.value="";
-    nom.value="";
-
-    save();
-    renderPlayers();
-}
-
-function renderPlayers(){
-    activePlayer.innerHTML="";
-    players.forEach(p=>{
-        activePlayer.innerHTML += `<option value="${p.id}">${p.prenom}</option>`;
-    });
-}
-
-activePlayer.onchange=()=>{
-    activePlayerId = Number(activePlayer.value);
-}
-
-// ---- DEPARTS ----
-function addTee(){
-    if(!time.value) return;
-
-    teeTimes.push({
-        time:time.value,
-        player:activePlayerId
-    });
-
-    time.value="";
-    save();
-    renderPlanning();
-}
-
-// ---- PLANNING ----
-function renderPlanning(){
-    planning.innerHTML="";
-
-    const now=new Date();
-
-    teeTimes.forEach(t=>{
-        const p = players.find(x=>x.id===t.player);
-        if(!p) return;
-
-        const [h,m]=t.time.split(":");
-        const d=new Date();
-        d.setHours(h,m,0);
-
-        let cls="";
-        if(d-now < 600000 && d>now) cls="soon";
-
-        planning.innerHTML +=
-        `<li class="${cls}">
-        ${t.time} - ${p.prenom}
-        </li>`;
-    });
-}
-
-// ---- HORLOGE ----
-function updateClock(){
-    const now=new Date();
-    clock.innerText=now.toLocaleTimeString();
-
-    let next=null;
-
-    teeTimes.forEach(t=>{
-        if(t.player!==activePlayerId) return;
-
-        const [h,m]=t.time.split(":");
-        const d=new Date();
-        d.setHours(h,m,0);
-
-        if(d>now && (!next || d<next)) next=d;
-    });
-
-    if(!next){
-        countdown.innerText="Aucun départ";
-        return;
-    }
-
-    const diff=next-now;
-    const min=Math.floor(diff/60000);
-    const sec=Math.floor((diff%60000)/1000);
-
-    countdown.innerText=`Départ dans ${min}m ${sec}s`;
-
-    if(diff < 600000){
-        clockCard.classList.add("alert");
-    } else {
-        clockCard.classList.remove("alert");
-    }
-}
-
-// ---- METEO ----
-function loadMeteo(){
-fetch("https://api.open-meteo.com/v1/forecast?latitude=46.12&longitude=3.40&current_weather=true&hourly=precipitation_probability")
-.then(r=>r.json())
-.then(data=>{
-    const t=data.current_weather.temperature;
-    const pluie=data.hourly.precipitation_probability[new Date().getHours()];
-
-    meteo.innerText = `${t}°C - pluie ${pluie}%`;
-})
-}
-
-// ---- LOOP ----
-setInterval(updateClock,1000);
-setInterval(loadMeteo,3600000);
-
-renderPlayers();
-renderPlanning();
-updateClock();
-loadMeteo();
-
-</script>
-
-</body>
-</html>
+button {
+    width:100%;
+    padding:12px;
+    margin-top:8px;
+    border:none;
+    border-radius:10px;
+    background:black;
+    color:white;
